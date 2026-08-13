@@ -1,5 +1,5 @@
 'use client';
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect } from 'react';
 
 const ROOT_FOLDER_ID = '1qJu2_VmnxluIFlgARfX-G606W-tCDAlG'; 
 const GOOGLE_API_KEY = 'AIzaSyCwhYhosnTrfHyi6N1C0N8AJl4gT85xg9w'; 
@@ -37,17 +37,16 @@ export default function AnimeToonApp() {
   const [seasons, setSeasons] = useState<any[]>([]);
   const [selectedSeason, setSelectedSeason] = useState<any>(null);
   const [episodes, setEpisodes] = useState<any[]>([]);
+  const [audioPreference, setAudioPreference] = useState<'SUB' | 'DUB'>('SUB');
   
   const [searchQuery, setSearchQuery] = useState('');
   const [isSearchOpen, setIsSearchOpen] = useState(false);
 
-  // Watch Status & Favorites Filtering
   const [watchStatuses, setWatchStatuses] = useState<Record<string, WatchStatus>>({});
   const [myListFilter, setMyListFilter] = useState<string>('All');
   const [showStatusMenu, setShowStatusMenu] = useState(false);
 
   const [activePlayerEpisode, setActivePlayerEpisode] = useState<any>(null);
-  const playerContainerRef = useRef<HTMLDivElement>(null);
 
   const [loadingData, setLoadingData] = useState(true);
   const [loadingEpisodes, setLoadingEpisodes] = useState(false);
@@ -75,7 +74,7 @@ export default function AnimeToonApp() {
     }
   }, []);
 
-  // Fetch Genre Folders -> Anime Folders -> Dynamically Select 5 Newest for Carousel
+  // Fetch Genre Folders -> Anime Folders
   useEffect(() => {
     async function fetchFullLibrary() {
       try {
@@ -149,7 +148,6 @@ export default function AnimeToonApp() {
 
           setGenres(processedGenres);
 
-          // Extract all shows, sort by newest creation date, take top 5
           const allShows = processedGenres.flatMap((g) => g.shows);
           const newestShows = [...allShows]
             .sort((a, b) => new Date(b.createdTime || 0).getTime() - new Date(a.createdTime || 0).getTime())
@@ -232,20 +230,9 @@ export default function AnimeToonApp() {
     setShowStatusMenu(false);
   };
 
-  const toggleFullscreen = () => {
-    if (playerContainerRef.current) {
-      if (!document.fullscreenElement) {
-        playerContainerRef.current.requestFullscreen().catch((err) => console.error(err));
-      } else {
-        document.exitFullscreen().catch((err) => console.error(err));
-      }
-    }
-  };
-
   const allAnimeList = genres.flatMap((g) => g.shows);
   const searchedAnime = allAnimeList.filter((s) => s.name.toLowerCase().includes(searchQuery.toLowerCase()));
 
-  // Filtered shows for My Lists tab
   const favoriteShows = allAnimeList.filter((s) => {
     const status = watchStatuses[s.id];
     if (!status) return false;
@@ -325,27 +312,45 @@ export default function AnimeToonApp() {
               </div>
               <h2 className="text-xl font-extrabold text-gray-900 leading-tight">{selectedShow.name}</h2>
               
-              <div className="flex items-center gap-3 pt-2 relative">
-                <button
-                  onClick={() => setShowStatusMenu(!showStatusMenu)}
-                  className="px-3 py-1 bg-pink-50 border border-[#FF2A7A] text-[#FF2A7A] font-bold text-xs rounded-xl"
-                >
-                  {watchStatuses[selectedShow.id] ? `Status: ${watchStatuses[selectedShow.id]}` : '+ Add to Watchlist'}
-                </button>
+              <div className="flex items-center justify-between pt-2">
+                <div className="relative">
+                  <button
+                    onClick={() => setShowStatusMenu(!showStatusMenu)}
+                    className="px-3 py-1 bg-pink-50 border border-[#FF2A7A] text-[#FF2A7A] font-bold text-xs rounded-xl"
+                  >
+                    {watchStatuses[selectedShow.id] ? `Status: ${watchStatuses[selectedShow.id]}` : '+ Add to Watchlist'}
+                  </button>
 
-                {showStatusMenu && (
-                  <div className="absolute left-0 top-10 bg-white border border-gray-200 rounded-2xl shadow-xl z-30 p-2 w-44 flex flex-col gap-1">
-                    {(['Watching', 'Plan to Watch', 'On Hold', 'Completed', 'Dropped'] as WatchStatus[]).map((status) => (
-                      <button
-                        key={status}
-                        onClick={() => setStatusForShow(selectedShow.id, status)}
-                        className="text-left text-xs font-bold px-3 py-1.5 rounded-xl hover:bg-pink-50 text-gray-700"
-                      >
-                        {status}
-                      </button>
-                    ))}
-                  </div>
-                )}
+                  {showStatusMenu && (
+                    <div className="absolute left-0 top-10 bg-white border border-gray-200 rounded-2xl shadow-xl z-30 p-2 w-44 flex flex-col gap-1">
+                      {(['Watching', 'Plan to Watch', 'On Hold', 'Completed', 'Dropped'] as WatchStatus[]).map((status) => (
+                        <button
+                          key={status}
+                          onClick={() => setStatusForShow(selectedShow.id, status)}
+                          className="text-left text-xs font-bold px-3 py-1.5 rounded-xl hover:bg-pink-50 text-gray-700"
+                        >
+                          {status}
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </div>
+
+                {/* Sub / Dub Selector Toggle */}
+                <div className="flex bg-gray-100 p-0.5 rounded-xl border border-gray-200">
+                  <button
+                    onClick={() => setAudioPreference('SUB')}
+                    className={`px-3 py-1 text-[10px] font-black rounded-lg transition ${audioPreference === 'SUB' ? 'bg-[#FF2A7A] text-white shadow' : 'text-gray-500'}`}
+                  >
+                    SUB
+                  </button>
+                  <button
+                    onClick={() => setAudioPreference('DUB')}
+                    className={`px-3 py-1 text-[10px] font-black rounded-lg transition ${audioPreference === 'DUB' ? 'bg-[#FF2A7A] text-white shadow' : 'text-gray-500'}`}
+                  >
+                    DUB
+                  </button>
+                </div>
               </div>
             </div>
 
@@ -383,7 +388,10 @@ export default function AnimeToonApp() {
                       className="flex items-center justify-between p-3 bg-white rounded-2xl border border-gray-200 cursor-pointer hover:border-[#FF2A7A]"
                     >
                       <div>
-                        <p className="text-[10px] font-bold text-[#FF2A7A]">{ep.code}</p>
+                        <div className="flex items-center gap-1.5">
+                          <p className="text-[10px] font-bold text-[#FF2A7A]">{ep.code}</p>
+                          <span className="text-[8px] font-black bg-pink-100 text-[#FF2A7A] px-1 rounded">{audioPreference}</span>
+                        </div>
                         <p className="text-xs font-bold text-gray-800 line-clamp-1 max-w-[200px]">{ep.title}</p>
                       </div>
                       <button className="p-2 text-[#FF2A7A] font-bold text-lg">▶</button>
@@ -540,54 +548,40 @@ export default function AnimeToonApp() {
           )
         )}
 
-        {/* HIGH-GRADE SMOOTH VIDEO MODAL WITH FULLSCREEN SUPPORT */}
+        {/* FULL-SCREEN CLEAN VIDEO PLAYER MODAL */}
         {activePlayerEpisode && (
-          <div className="fixed inset-0 bg-black/95 z-50 flex flex-col justify-center p-3 animate-fadeIn">
-            <div className="w-full max-w-md mx-auto bg-gray-950 rounded-2xl overflow-hidden shadow-2xl border border-gray-800 space-y-2">
-              
-              {/* Modal Header */}
-              <div className="flex justify-between items-center px-4 py-2 text-white border-b border-gray-800">
-                <span className="text-xs font-bold truncate max-w-[180px]">{activePlayerEpisode.title}</span>
-                
-                <div className="flex items-center gap-2">
-                  {/* Fullscreen Button */}
-                  <button
-                    onClick={toggleFullscreen}
-                    className="p-1 text-xs bg-gray-800 text-gray-200 rounded-lg hover:bg-[#FF2A7A] transition"
-                    title="Toggle Fullscreen"
-                  >
-                    ⛶ Fullscreen
-                  </button>
+          <div className="fixed inset-0 bg-black z-50 flex flex-col justify-between">
+            {/* Top Minimal Bar */}
+            <div className="flex justify-between items-center px-4 py-3 bg-gradient-to-b from-black/90 to-transparent text-white z-10">
+              <span className="text-xs font-bold truncate max-w-[240px]">{activePlayerEpisode.title}</span>
+              <button
+                onClick={() => setActivePlayerEpisode(null)}
+                className="text-white text-xl font-bold bg-black/50 w-8 h-8 rounded-full flex items-center justify-center border border-white/20"
+              >
+                ✕
+              </button>
+            </div>
 
-                  <button
-                    onClick={() => setActivePlayerEpisode(null)}
-                    className="text-gray-400 text-lg font-bold hover:text-white"
-                  >
-                    ✕
-                  </button>
-                </div>
-              </div>
+            {/* Clean Fit Video Iframe */}
+            <div className="relative w-full h-full flex items-center justify-center bg-black overflow-hidden">
+              <iframe
+                src={activePlayerEpisode.embedUrl}
+                className="w-full h-full border-0"
+                allow="autoplay; fullscreen"
+                allowFullScreen
+              />
+            </div>
 
-              {/* Seamless Video Container */}
-              <div ref={playerContainerRef} className="relative w-full aspect-[16/9] bg-black overflow-hidden rounded-xl">
-                <iframe
-                  src={activePlayerEpisode.embedUrl}
-                  className="w-full h-full border-0"
-                  allow="autoplay; fullscreen"
-                  allowFullScreen
-                />
-              </div>
-
-              <div className="p-2.5 bg-gray-900 text-center rounded-b-2xl">
-                <a
-                  href={activePlayerEpisode.webUrl}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="inline-block bg-[#FF2A7A] text-white text-[11px] font-bold px-4 py-1.5 rounded-xl shadow"
-                >
-                  Open Direct in Google Drive ↗
-                </a>
-              </div>
+            {/* Bottom Direct Drive Link */}
+            <div className="p-3 bg-gradient-to-t from-black/90 to-transparent text-center z-10">
+              <a
+                href={activePlayerEpisode.webUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="inline-block bg-[#FF2A7A] text-white text-xs font-bold px-4 py-2 rounded-xl shadow"
+              >
+                Open Direct in Google Drive ↗
+              </a>
             </div>
           </div>
         )}
