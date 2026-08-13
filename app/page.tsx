@@ -1,4 +1,4 @@
- 'use client';
+'use client';
 import { useState, useEffect, useRef } from 'react';
 
 const ROOT_FOLDER_ID = '1qJu2_VmnxluIFlgARfX-G606W-tCDAlG'; 
@@ -528,7 +528,7 @@ export default function AnimeToonApp() {
               <div className="flex flex-wrap gap-3 pt-2">
                 {favoriteShows.length === 0 ? (
                   <p className="text-xs text-gray-400 font-bold py-6">
-                    No anime found in '{myListFilter}' category.
+                    {`No anime found in '${myListFilter}' category.`}
                   </p>
                 ) : (
                   favoriteShows.map(renderAnimeCard)
