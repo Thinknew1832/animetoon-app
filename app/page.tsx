@@ -1,9 +1,5 @@
 'use client';
 import { useState, useEffect } from 'react';
-import '@vidstack/react/player/styles/default/theme.css';
-import '@vidstack/react/player/styles/default/layouts/video.css';
-import { MediaPlayer, MediaProvider } from '@vidstack/react';
-import { defaultLayoutIcons, DefaultVideoLayout } from '@vidstack/react/player/layouts/default';
 
 const ROOT_FOLDER_ID = '1qJu2_VmnxluIFlgARfX-G606W-tCDAlG'; 
 const GOOGLE_API_KEY = 'AIzaSyCwhYhosnTrfHyi6N1C0N8AJl4gT85xg9w'; 
@@ -212,7 +208,8 @@ export default function AnimeToonApp() {
           id: file.id,
           code: `S${seasonNum} E${(index + 1).toString().padStart(2, '0')}`,
           title: file.name.replace(/\.[^/.]+$/, ''),
-          streamUrl: `https://drive.google.com/uc?export=download&id=${file.id}`,
+          // Embedded player link for Drive streaming
+          embedUrl: `https://drive.google.com/file/d/${file.id}/preview`,
           webUrl: `https://drive.google.com/file/d/${file.id}/view`,
         }));
         setEpisodes(formatted);
@@ -483,7 +480,7 @@ export default function AnimeToonApp() {
           )
         )}
 
-        {/* VIDSTACK POWERED VIDEO PLAYER MODAL */}
+        {/* RELIABLE DRIVE STREAMING MODAL */}
         {activePlayerEpisode && (
           <div className="fixed inset-0 bg-black/95 z-50 flex flex-col justify-center p-4">
             <div className="w-full max-w-md mx-auto bg-black rounded-2xl overflow-hidden shadow-2xl space-y-3">
@@ -497,18 +494,14 @@ export default function AnimeToonApp() {
                 </button>
               </div>
 
-              {/* Vidstack Player Container */}
-              <div className="relative aspect-video bg-black flex items-center justify-center">
-                <MediaPlayer
-                  title={activePlayerEpisode.title}
-                  src={activePlayerEpisode.streamUrl}
-                  autoPlay
-                  playsInline
-                  className="w-full h-full"
-                >
-                  <MediaProvider />
-                  <DefaultVideoLayout icons={defaultLayoutIcons} />
-                </MediaPlayer>
+              {/* Responsive Drive Video Player Embed */}
+              <div className="relative aspect-video bg-black overflow-hidden rounded-xl">
+                <iframe
+                  src={activePlayerEpisode.embedUrl}
+                  className="w-full h-full border-0"
+                  allow="autoplay; fullscreen"
+                  allowFullScreen
+                />
               </div>
 
               <div className="p-3 bg-gray-900 rounded-b-2xl text-center">
