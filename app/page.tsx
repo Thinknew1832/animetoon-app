@@ -1,612 +1,362 @@
 'use client';
-import { useState, useEffect } from 'react';
 
-const ROOT_FOLDER_ID = '1qJu2_VmnxluIFlgARfX-G606W-tCDAlG'; 
-const GOOGLE_API_KEY = 'AIzaSyCwhYhosnTrfHyi6N1C0N8AJl4gT85xg9w'; 
+import React, { useState, useEffect } from 'react';
 
-type WatchStatus = 'Watching' | 'Plan to Watch' | 'On Hold' | 'Dropped' | 'Completed';
-type NavigationTab = 'Home' | 'My Lists' | 'Browse' | 'Account';
-
-const DEFAULT_POSTER = 'https://images.unsplash.com/photo-1578632767115-351597cf2477?w=400&q=80';
-const DEFAULT_BANNER = 'https://images.unsplash.com/photo-1534447677768-be436bb09401?w=800&q=80';
-
-interface AnimeShow {
+interface DriveFile {
   id: string;
   name: string;
-  genreId: string;
-  genreName: string;
-  poster: string;   // Image 1
-  banner: string;   // Image 2
-  createdTime?: string;
+  mimeType?: string;
+  thumbnailLink?: string;
 }
 
-interface GenreCategory {
-  id: string;
-  rawName: string;
-  cleanName: string;
-  shows: AnimeShow[];
-}
+export default function Home() {
+  const GOOGLE_API_KEY = "AIzaSyCwhYhosnTrfHyi6N1C0N8AJl4gT85xg9w";
+  const FOLDER_ID = "1qJu2_VmnxluIFlgARfX-G606W-tCDAlG";
 
-export default function AnimeToonApp() {
-  const [currentTab, setCurrentTab] = useState<NavigationTab>('Home');
-  const [genres, setGenres] = useState<GenreCategory[]>([]);
-  const [featuredAnime, setFeaturedAnime] = useState<AnimeShow[]>([]);
-  const [selectedGenreView, setSelectedGenreView] = useState<GenreCategory | null>(null);
-  
-  const [selectedShow, setSelectedShow] = useState<AnimeShow | null>(null);
-  const [seasons, setSeasons] = useState<any[]>([]);
-  const [selectedSeason, setSelectedSeason] = useState<any>(null);
-  const [episodes, setEpisodes] = useState<any[]>([]);
-  const [audioPreference, setAudioPreference] = useState<'SUB' | 'DUB'>('SUB');
-  
+  const [episodes, setEpisodes] = useState<DriveFile[]>([]);
+  const [filteredEpisodes, setFilteredEpisodes] = useState<DriveFile[]>([]);
   const [searchQuery, setSearchQuery] = useState('');
-  const [isSearchOpen, setIsSearchOpen] = useState(false);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState('');
+  const [activeVideo, setActiveVideo] = useState<{ title: string; id: string } | null>(null);
 
-  const [watchStatuses, setWatchStatuses] = useState<Record<string, WatchStatus>>({});
-  const [myListFilter, setMyListFilter] = useState<string>('All');
-  const [showStatusMenu, setShowStatusMenu] = useState(false);
-
-  const [activePlayerEpisode, setActivePlayerEpisode] = useState<any>(null);
-
-  const [loadingData, setLoadingData] = useState(true);
-  const [loadingEpisodes, setLoadingEpisodes] = useState(false);
-
-  const [featuredIndex, setFeaturedIndex] = useState(0);
-
-  // Auto-slide dynamic hero carousel every 7 SECONDS
   useEffect(() => {
-    if (featuredAnime.length === 0) return;
-    const timer = setInterval(() => {
-      setFeaturedIndex((prev) => (prev + 1) % featuredAnime.length);
-    }, 7000);
-    return () => clearInterval(timer);
-  }, [featuredAnime.length]);
-
-  // Load saved watch statuses
-  useEffect(() => {
-    const savedStatuses = localStorage.getItem('animetoon_watch_statuses');
-    if (savedStatuses) {
+    async function fetchDriveVideos() {
       try {
-        setWatchStatuses(JSON.parse(savedStatuses));
-      } catch (e) {
-        console.error('Failed to parse watch statuses', e);
-      }
-    }
-  }, []);
+        setLoading(true);
+        const endpoint = `https://www.googleapis.com/drive/v3/files?q='${FOLDER_ID}'+in+parents+and+trashed=false&fields=files(id,name,mimeType,thumbnailLink)&key=${GOOGLE_API_KEY}`;
+        const res = await fetch(endpoint);
+        const data = await res.json();
 
-  // Fetch Genre Folders -> Anime Folders
-  useEffect(() => {
-    async function fetchFullLibrary() {
-      try {
-        setLoadingData(true);
-        const genreQuery = encodeURIComponent(`'${ROOT_FOLDER_ID}' in parents and mimeType = 'application/vnd.google-apps.folder' and trashed = false`);
-        const genreUrl = `https://www.googleapis.com/drive/v3/files?q=${genreQuery}&fields=files(id,name)&key=${GOOGLE_API_KEY}`;
-        const genreRes = await fetch(genreUrl);
-        const genreData = await genreRes.json();
-
-        if (genreData.files) {
-          const sortedGenreFolders = genreData.files.sort((a: any, b: any) => a.name.localeCompare(b.name, undefined, { numeric: true }));
-
-          const processedGenres: GenreCategory[] = await Promise.all(
-            sortedGenreFolders.map(async (genreFolder: any) => {
-              const cleanName = genreFolder.name.replace(/^\d+\.\s*/, '');
-
-              const animeQuery = encodeURIComponent(`'${genreFolder.id}' in parents and mimeType = 'application/vnd.google-apps.folder' and trashed = false`);
-              const animeUrl = `https://www.googleapis.com/drive/v3/files?q=${animeQuery}&fields=files(id,name,createdTime)&key=${GOOGLE_API_KEY}`;
-              const animeRes = await fetch(animeUrl);
-              const animeData = await animeRes.json();
-
-              let animeList: AnimeShow[] = [];
-
-              if (animeData.files) {
-                animeList = await Promise.all(
-                  animeData.files.map(async (animeFolder: any) => {
-                    let cardPoster = DEFAULT_POSTER;  
-                    let infoBanner = DEFAULT_BANNER;  
-
-                    try {
-                      const imgQuery = encodeURIComponent(`'${animeFolder.id}' in parents and (mimeType contains 'image/') and trashed = false`);
-                      const imgUrl = `https://www.googleapis.com/drive/v3/files?q=${imgQuery}&fields=files(id,name)&key=${GOOGLE_API_KEY}`;
-                      const imgRes = await fetch(imgUrl);
-                      const imgData = await imgRes.json();
-
-                      if (imgData.files) {
-                        imgData.files.forEach((file: any) => {
-                          const lowerName = file.name.toLowerCase();
-                          if (lowerName.includes('image 1') || lowerName.includes('image1')) {
-                            cardPoster = `https://lh3.googleusercontent.com/d/${file.id}=s0`;
-                          } else if (lowerName.includes('image 2') || lowerName.includes('image2')) {
-                            infoBanner = `https://lh3.googleusercontent.com/d/${file.id}=s0`;
-                          }
-                        });
-                      }
-                    } catch (err) {
-                      console.error('Error fetching images:', err);
-                    }
-
-                    return {
-                      id: animeFolder.id,
-                      name: animeFolder.name,
-                      genreId: genreFolder.id,
-                      genreName: cleanName,
-                      poster: cardPoster,
-                      banner: infoBanner !== DEFAULT_BANNER ? infoBanner : cardPoster,
-                      createdTime: animeFolder.createdTime,
-                    };
-                  })
-                );
-              }
-
-              return {
-                id: genreFolder.id,
-                rawName: genreFolder.name,
-                cleanName: cleanName,
-                shows: animeList,
-              };
-            })
-          );
-
-          setGenres(processedGenres);
-
-          const allShows = processedGenres.flatMap((g) => g.shows);
-          const newestShows = [...allShows]
-            .sort((a, b) => new Date(b.createdTime || 0).getTime() - new Date(a.createdTime || 0).getTime())
-            .slice(0, 5);
-
-          setFeaturedAnime(newestShows);
+        if (data.error) {
+          setError(`Drive API Error: ${data.error.message}`);
+          setLoading(false);
+          return;
         }
-      } catch (error) {
-        console.error('Error fetching library:', error);
+
+        const videoFiles: DriveFile[] = (data.files || []).filter((f: DriveFile) =>
+          (f.mimeType && f.mimeType.includes("video")) ||
+          f.name.match(/\.(mp4|mkv|webm|avi|mov)$/i)
+        );
+
+        setEpisodes(videoFiles);
+        setFilteredEpisodes(videoFiles);
+      } catch (err: any) {
+        setError('Failed to connect to Google Drive.');
       } finally {
-        setLoadingData(false);
+        setLoading(false);
       }
     }
 
-    fetchFullLibrary();
+    fetchDriveVideos();
   }, []);
 
-  const handleSelectShow = async (show: AnimeShow) => {
-    setSelectedShow(show);
-    setSeasons([]);
-    setSelectedSeason(null);
-    setEpisodes([]);
-
-    try {
-      const subfolderQuery = encodeURIComponent(`'${show.id}' in parents and mimeType = 'application/vnd.google-apps.folder' and trashed = false`);
-      const subfolderUrl = `https://www.googleapis.com/drive/v3/files?q=${subfolderQuery}&fields=files(id,name)&key=${GOOGLE_API_KEY}`;
-      const res = await fetch(subfolderUrl);
-      const data = await res.json();
-
-      if (data.files && data.files.length > 0) {
-        const sortedSeasons = data.files.sort((a: any, b: any) => a.name.localeCompare(b.name, undefined, { numeric: true }));
-        setSeasons(sortedSeasons);
-        handleSelectSeason(sortedSeasons[0]);
-      } else {
-        fetchEpisodesFromFolder(show.id, 'Season 1');
-      }
-    } catch (error) {
-      console.error('Error fetching show contents:', error);
+  const handleSearch = (query: string) => {
+    setSearchQuery(query);
+    if (!query.trim()) {
+      setFilteredEpisodes(episodes);
+    } else {
+      setFilteredEpisodes(
+        episodes.filter((ep) =>
+          ep.name.toLowerCase().includes(query.toLowerCase())
+        )
+      );
     }
   };
-
-  const handleSelectSeason = (season: any) => {
-    setSelectedSeason(season);
-    fetchEpisodesFromFolder(season.id, season.name);
-  };
-
-  const fetchEpisodesFromFolder = async (folderId: string, seasonLabel: string) => {
-    setLoadingEpisodes(true);
-
-    try {
-      const fileQuery = encodeURIComponent(`'${folderId}' in parents and trashed = false and mimeType != 'application/vnd.google-apps.folder' and not (mimeType contains 'image/')`);
-      const fileUrl = `https://www.googleapis.com/drive/v3/files?q=${fileQuery}&fields=files(id,name)&key=${GOOGLE_API_KEY}`;
-      const res = await fetch(fileUrl);
-      const data = await res.json();
-
-      if (data.files) {
-        const seasonNum = seasonLabel.match(/\d+/) ? seasonLabel.match(/\d+/)?.[0].padStart(2, '0') : '01';
-        const formatted = data.files.map((file: any, index: number) => ({
-          id: file.id,
-          code: `S${seasonNum} E${(index + 1).toString().padStart(2, '0')}`,
-          title: file.name.replace(/\.[^/.]+$/, ''),
-          embedUrl: `https://drive.google.com/file/d/${file.id}/preview`,
-          webUrl: `https://drive.google.com/file/d/${file.id}/view`,
-        }));
-        setEpisodes(formatted);
-      } else {
-        setEpisodes([]);
-      }
-    } catch (error) {
-      console.error('Error fetching episodes:', error);
-    } finally {
-      setLoadingEpisodes(false);
-    }
-  };
-
-  const setStatusForShow = (showId: string, status: WatchStatus) => {
-    const updated = { ...watchStatuses, [showId]: status };
-    setWatchStatuses(updated);
-    localStorage.setItem('animetoon_watch_statuses', JSON.stringify(updated));
-    setShowStatusMenu(false);
-  };
-
-  const allAnimeList = genres.flatMap((g) => g.shows);
-  const searchedAnime = allAnimeList.filter((s) => s.name.toLowerCase().includes(searchQuery.toLowerCase()));
-
-  const favoriteShows = allAnimeList.filter((s) => {
-    const status = watchStatuses[s.id];
-    if (!status) return false;
-    if (myListFilter === 'All') return true;
-    return status === myListFilter;
-  });
-
-  const renderAnimeCard = (show: AnimeShow) => {
-    const status = watchStatuses[show.id];
-    return (
-      <div
-        key={show.id}
-        onClick={() => handleSelectShow(show)}
-        className="w-28 shrink-0 space-y-1.5 cursor-pointer relative group"
-      >
-        {status && (
-          <span className="absolute top-1.5 right-1.5 bg-[#FF2A7A] text-white text-[8px] font-bold px-1.5 py-0.5 rounded-full z-10 shadow">
-            {status}
-          </span>
-        )}
-        <div className="w-28 h-40 rounded-2xl overflow-hidden shadow-md relative bg-gray-200 transition group-hover:scale-95">
-          <img src={show.poster} alt={show.name} className="w-full h-full object-cover" />
-        </div>
-        <p className="text-xs font-bold text-gray-800 truncate px-0.5">{show.name}</p>
-      </div>
-    );
-  };
-
-  const statusCategories: (WatchStatus | 'All')[] = [
-    'All',
-    'Watching',
-    'Plan to Watch',
-    'On Hold',
-    'Completed',
-    'Dropped',
-  ];
 
   return (
-    <main className="bg-[#F6F7FA] text-gray-900 min-h-screen pb-24 flex justify-center font-sans">
-      <div className="w-full max-w-md bg-white min-h-screen flex flex-col gap-4 relative shadow-xl">
-        
-        {/* Header */}
-        <header className="flex justify-between items-center px-4 py-3 bg-white/90 sticky top-0 z-30 backdrop-blur-md border-b border-gray-100">
-          <h1 className="text-2xl font-black text-[#FF2A7A] tracking-tight">AnimeToon</h1>
-          <button onClick={() => setIsSearchOpen(!isSearchOpen)} className="text-xl">🔍</button>
-        </header>
+    <main style={styles.main}>
+      {/* Top Navbar */}
+      <header style={styles.header}>
+        <div style={styles.logo} onClick={() => window.scrollTo({ top: 0, behavior: 'smooth' })}>
+          ▶ AnimeToon
+        </div>
+        <div style={styles.searchBox}>
+          <input
+            type="text"
+            placeholder="Search episodes..."
+            value={searchQuery}
+            onChange={(e) => handleSearch(e.target.value)}
+            style={styles.searchInput}
+          />
+        </div>
+      </header>
 
-        {isSearchOpen && (
-          <div className="px-4 py-2 bg-pink-50 border-b border-pink-100">
-            <input
-              type="text"
-              placeholder="Search anime in library..."
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              className="w-full px-3 py-2 text-xs rounded-xl border border-pink-200 outline-none focus:border-[#FF2A7A]"
-            />
-          </div>
+      {/* Hero Banner */}
+      <section style={styles.hero}>
+        <h1 style={styles.heroTitle}>AnimeToon Cloud</h1>
+        <p style={styles.heroDesc}>
+          High-speed anime streaming synced directly from your Google Drive library.
+        </p>
+        {episodes.length > 0 && (
+          <button
+            style={styles.playBtn}
+            onClick={() =>
+              setActiveVideo({
+                title: episodes[0].name.replace(/\.[^/.]+$/, ''),
+                id: episodes[0].id,
+              })
+            }
+          >
+            ▶ Watch Latest
+          </button>
         )}
+      </section>
 
-        {/* VIEW 1: ANIME DETAILS PAGE */}
-        {selectedShow ? (
-          <div className="p-4 space-y-4">
-            <button
-              onClick={() => setSelectedShow(null)}
-              className="text-xs font-bold text-[#FF2A7A] bg-pink-50 px-3 py-1.5 rounded-xl flex items-center gap-1 border border-pink-100"
+      {/* Available Episodes Section */}
+      <div style={styles.sectionHeader}>
+        <span style={styles.sectionBar}></span>
+        <h2 style={styles.sectionTitle}>Available Episodes</h2>
+      </div>
+
+      {loading && <p style={styles.statusText}>Loading episodes from Google Drive...</p>}
+      {error && <p style={{ ...styles.statusText, color: '#ff5555' }}>{error}</p>}
+      {!loading && !error && filteredEpisodes.length === 0 && (
+        <p style={styles.statusText}>No video files found in your Drive folder yet.</p>
+      )}
+
+      {/* Episode Grid */}
+      <div style={styles.grid}>
+        {filteredEpisodes.map((file) => {
+          const titleClean = file.name.replace(/\.[^/.]+$/, '');
+          const thumbnail = file.thumbnailLink
+            ? file.thumbnailLink.replace('=s220', '=s500')
+            : 'https://images.unsplash.com/photo-1578632767115-351597cf2477?w=500';
+
+          return (
+            <div
+              key={file.id}
+              style={styles.card}
+              onClick={() => setActiveVideo({ title: titleClean, id: file.id })}
             >
-              ← Back
+              <img
+                src={thumbnail}
+                alt={file.name}
+                style={styles.cardImg}
+                onError={(e) => {
+                  (e.target as HTMLImageElement).src =
+                    'https://images.unsplash.com/photo-1578632767115-351597cf2477?w=500';
+                }}
+              />
+              <div style={styles.cardInfo}>
+                <div style={styles.cardTitle} title={titleClean}>
+                  {titleClean}
+                </div>
+                <div style={styles.cardMeta}>
+                  <span>Drive HD</span>
+                  <span style={{ color: '#f47521', fontWeight: 600 }}>▶ Play</span>
+                </div>
+              </div>
+            </div>
+          );
+        })}
+      </div>
+
+      {/* Video Stream Modal */}
+      {activeVideo && (
+        <div style={styles.modalBackdrop}>
+          <div style={styles.modalWrapper}>
+            <button style={styles.closeBtn} onClick={() => setActiveVideo(null)}>
+              ✕
             </button>
-
-            <div className="rounded-2xl overflow-hidden shadow-md relative h-48 bg-gray-900">
-              <img src={selectedShow.banner} alt={selectedShow.name} className="w-full h-full object-cover" />
-            </div>
-
-            <div className="space-y-2">
-              <div className="flex gap-2 text-xs font-bold text-[#FF2A7A]">
-                <span>{selectedShow.genreName}</span> • <span>Animation</span>
-              </div>
-              <h2 className="text-xl font-extrabold text-gray-900 leading-tight">{selectedShow.name}</h2>
-              
-              <div className="flex items-center justify-between pt-2">
-                <div className="relative">
-                  <button
-                    onClick={() => setShowStatusMenu(!showStatusMenu)}
-                    className="px-3 py-1 bg-pink-50 border border-[#FF2A7A] text-[#FF2A7A] font-bold text-xs rounded-xl"
-                  >
-                    {watchStatuses[selectedShow.id] ? `Status: ${watchStatuses[selectedShow.id]}` : '+ Add to Watchlist'}
-                  </button>
-
-                  {showStatusMenu && (
-                    <div className="absolute left-0 top-10 bg-white border border-gray-200 rounded-2xl shadow-xl z-30 p-2 w-44 flex flex-col gap-1">
-                      {(['Watching', 'Plan to Watch', 'On Hold', 'Completed', 'Dropped'] as WatchStatus[]).map((status) => (
-                        <button
-                          key={status}
-                          onClick={() => setStatusForShow(selectedShow.id, status)}
-                          className="text-left text-xs font-bold px-3 py-1.5 rounded-xl hover:bg-pink-50 text-gray-700"
-                        >
-                          {status}
-                        </button>
-                      ))}
-                    </div>
-                  )}
-                </div>
-
-                {/* Sub / Dub Selector Toggle */}
-                <div className="flex bg-gray-100 p-0.5 rounded-xl border border-gray-200">
-                  <button
-                    onClick={() => setAudioPreference('SUB')}
-                    className={`px-3 py-1 text-[10px] font-black rounded-lg transition ${audioPreference === 'SUB' ? 'bg-[#FF2A7A] text-white shadow' : 'text-gray-500'}`}
-                  >
-                    SUB
-                  </button>
-                  <button
-                    onClick={() => setAudioPreference('DUB')}
-                    className={`px-3 py-1 text-[10px] font-black rounded-lg transition ${audioPreference === 'DUB' ? 'bg-[#FF2A7A] text-white shadow' : 'text-gray-500'}`}
-                  >
-                    DUB
-                  </button>
-                </div>
-              </div>
-            </div>
-
-            <div className="space-y-3 pt-2">
-              {seasons.length > 0 ? (
-                <div className="flex gap-2 overflow-x-auto pb-1 scrollbar-none">
-                  {seasons.map((s) => (
-                    <button
-                      key={s.id}
-                      onClick={() => handleSelectSeason(s)}
-                      className={`px-4 py-2 rounded-xl text-xs font-bold shrink-0 border transition ${
-                        selectedSeason?.id === s.id ? 'bg-[#FF2A7A] text-white border-[#FF2A7A]' : 'bg-gray-100 text-gray-700 border-gray-200'
-                      }`}
-                    >
-                      📋 {s.name.toUpperCase()}
-                    </button>
-                  ))}
-                </div>
-              ) : (
-                <div className="bg-gray-100 font-bold text-xs px-4 py-2.5 rounded-xl border border-gray-200 inline-block">
-                  📋 SEASON 1
-                </div>
-              )}
-
-              <div className="space-y-2 bg-[#F1F3F6] p-3 rounded-2xl">
-                {loadingEpisodes ? (
-                  <p className="text-xs text-gray-500 animate-pulse text-center py-6">Loading episodes...</p>
-                ) : episodes.length === 0 ? (
-                  <p className="text-xs text-gray-500 text-center py-6">No videos found.</p>
-                ) : (
-                  episodes.map((ep) => (
-                    <div
-                      key={ep.id}
-                      onClick={() => setActivePlayerEpisode(ep)}
-                      className="flex items-center justify-between p-3 bg-white rounded-2xl border border-gray-200 cursor-pointer hover:border-[#FF2A7A]"
-                    >
-                      <div>
-                        <div className="flex items-center gap-1.5">
-                          <p className="text-[10px] font-bold text-[#FF2A7A]">{ep.code}</p>
-                          <span className="text-[8px] font-black bg-pink-100 text-[#FF2A7A] px-1 rounded">{audioPreference}</span>
-                        </div>
-                        <p className="text-xs font-bold text-gray-800 line-clamp-1 max-w-[200px]">{ep.title}</p>
-                      </div>
-                      <button className="p-2 text-[#FF2A7A] font-bold text-lg">▶</button>
-                    </div>
-                  ))
-                )}
-              </div>
-            </div>
-
-          </div>
-        ) : selectedGenreView ? (
-          /* VIEW 2: SEE ALL GENRE VIEW */
-          <div className="p-4 space-y-4">
-            <button
-              onClick={() => setSelectedGenreView(null)}
-              className="text-xs font-bold text-[#FF2A7A] bg-pink-50 px-3 py-1.5 rounded-xl flex items-center gap-1 border border-pink-100"
-            >
-              ← Back to Home
-            </button>
-
-            <h2 className="text-xl font-black text-gray-900">{selectedGenreView.cleanName}</h2>
-
-            <div className="flex flex-wrap gap-3 pt-2">
-              {selectedGenreView.shows.length === 0 ? (
-                <p className="text-xs text-gray-400 font-bold">No anime added to this zone yet.</p>
-              ) : (
-                selectedGenreView.shows.map(renderAnimeCard)
-              )}
-            </div>
-          </div>
-        ) : (
-          /* VIEW 3: HOME MAIN TAB */
-          currentTab === 'Home' ? (
-            <div className="space-y-6">
-              {/* DYNAMIC HERO BANNER */}
-              {featuredAnime.length > 0 && (
-                <div 
-                  onClick={() => handleSelectShow(featuredAnime[featuredIndex])}
-                  className="relative w-full h-72 bg-gray-900 overflow-hidden flex flex-col justify-end p-4 cursor-pointer"
-                >
-                  <img 
-                    key={featuredAnime[featuredIndex].id}
-                    src={featuredAnime[featuredIndex].banner} 
-                    alt="Hero" 
-                    className="absolute inset-0 w-full h-full object-cover opacity-70 transition-opacity duration-700" 
-                  />
-                  <div className="absolute inset-0 bg-gradient-to-t from-black via-black/40 to-transparent" />
-                  <div className="relative z-10 space-y-1 text-white">
-                    <span className="text-[10px] font-bold text-[#FF2A7A] uppercase bg-white/90 px-2 py-0.5 rounded shadow">
-                      NEW RELEASE • {featuredAnime[featuredIndex].genreName}
-                    </span>
-                    <h2 className="text-2xl font-black">{featuredAnime[featuredIndex].name}</h2>
-                    
-                    {/* Carousel Dots */}
-                    <div className="flex gap-2 pt-2">
-                      {featuredAnime.map((_, idx) => (
-                        <button
-                          key={idx}
-                          onClick={(e) => { e.stopPropagation(); setFeaturedIndex(idx); }}
-                          className={`h-1.5 rounded-full transition-all duration-500 ${featuredIndex === idx ? 'w-6 bg-[#FF2A7A]' : 'w-2 bg-white/50'}`}
-                        />
-                      ))}
-                    </div>
-                  </div>
-                </div>
-              )}
-
-              <div className="p-4 space-y-6">
-                {searchQuery ? (
-                  <div className="space-y-3">
-                    <h3 className="text-sm font-extrabold text-gray-800">🔍 Search Results</h3>
-                    <div className="flex flex-wrap gap-3">
-                      {searchedAnime.map(renderAnimeCard)}
-                    </div>
-                  </div>
-                ) : loadingData ? (
-                  <p className="text-xs text-gray-400 font-bold animate-pulse text-center py-6">
-                    Fetching Latest Uploads & Thumbnails...
-                  </p>
-                ) : (
-                  genres.map((genre) => (
-                    <div key={genre.id} className="space-y-3">
-                      <div className="flex justify-between items-center">
-                        <h3 className="text-sm font-extrabold text-gray-800">🔥 {genre.cleanName}</h3>
-                        {genre.shows.length > 3 && (
-                          <button
-                            onClick={() => setSelectedGenreView(genre)}
-                            className="text-xs font-bold text-[#FF2A7A] hover:underline"
-                          >
-                            See all ({genre.shows.length}) →
-                          </button>
-                        )}
-                      </div>
-
-                      <div className="flex gap-3 overflow-x-auto pb-2 scrollbar-none">
-                        {genre.shows.length === 0 ? (
-                          <p className="text-[11px] text-gray-400 italic">No anime added yet.</p>
-                        ) : (
-                          genre.shows.slice(0, 3).map(renderAnimeCard)
-                        )}
-                      </div>
-                    </div>
-                  ))
-                )}
-              </div>
-            </div>
-          ) : currentTab === 'Browse' ? (
-            <div className="p-4 space-y-4">
-              <h2 className="text-lg font-black text-gray-900">Full Anime Library</h2>
-              <div className="flex flex-wrap gap-3 pt-2">
-                {allAnimeList.map(renderAnimeCard)}
-              </div>
-            </div>
-          ) : currentTab === 'My Lists' ? (
-            /* VIEW 4: MY LISTS / FAVORITES CATEGORIZED VIEW */
-            <div className="p-4 space-y-4">
-              <h2 className="text-lg font-black text-gray-900">My Watchlist</h2>
-              
-              {/* Clean Status Filter Bar */}
-              <div className="flex gap-2 overflow-x-auto pb-1 scrollbar-none">
-                {statusCategories.map((cat) => {
-                  const count = cat === 'All' 
-                    ? Object.keys(watchStatuses).length 
-                    : Object.values(watchStatuses).filter((v) => v === cat).length;
-
-                  return (
-                    <button
-                      key={cat}
-                      onClick={() => setMyListFilter(cat)}
-                      className={`px-3 py-1.5 rounded-full text-xs font-bold shrink-0 transition ${
-                        myListFilter === cat
-                          ? 'bg-[#FF2A7A] text-white shadow'
-                          : 'bg-gray-100 text-gray-600 hover:bg-pink-50'
-                      }`}
-                    >
-                      {cat} ({count})
-                    </button>
-                  );
-                })}
-              </div>
-
-              <div className="flex flex-wrap gap-3 pt-2">
-                {favoriteShows.length === 0 ? (
-                  <p className="text-xs text-gray-400 font-bold py-6">
-                    {`No anime found in '${myListFilter}' category.`}
-                  </p>
-                ) : (
-                  favoriteShows.map(renderAnimeCard)
-                )}
-              </div>
-            </div>
-          ) : (
-            <div className="p-8 text-center text-gray-500 font-bold text-xs">AnimeToon Account Settings</div>
-          )
-        )}
-
-        {/* FULL-SCREEN CLEAN VIDEO PLAYER MODAL */}
-        {activePlayerEpisode && (
-          <div className="fixed inset-0 bg-black z-50 flex flex-col justify-between">
-            {/* Top Minimal Bar */}
-            <div className="flex justify-between items-center px-4 py-3 bg-gradient-to-b from-black/90 to-transparent text-white z-10">
-              <span className="text-xs font-bold truncate max-w-[240px]">{activePlayerEpisode.title}</span>
-              <button
-                onClick={() => setActivePlayerEpisode(null)}
-                className="text-white text-xl font-bold bg-black/50 w-8 h-8 rounded-full flex items-center justify-center border border-white/20"
-              >
-                ✕
-              </button>
-            </div>
-
-            {/* Clean Fit Video Iframe */}
-            <div className="relative w-full h-full flex items-center justify-center bg-black overflow-hidden">
+            <div style={styles.playerContainer}>
               <iframe
-                src={activePlayerEpisode.embedUrl}
-                className="w-full h-full border-0"
+                src={`https://drive.google.com/file/d/${activeVideo.id}/preview`}
                 allow="autoplay; fullscreen"
                 allowFullScreen
+                style={styles.iframe}
               />
             </div>
-
-            {/* Bottom Direct Drive Link */}
-            <div className="p-3 bg-gradient-to-t from-black/90 to-transparent text-center z-10">
-              <a
-                href={activePlayerEpisode.webUrl}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="inline-block bg-[#FF2A7A] text-white text-xs font-bold px-4 py-2 rounded-xl shadow"
-              >
-                Open Direct in Google Drive ↗
-              </a>
-            </div>
+            <div style={styles.nowPlayingText}>Playing: {activeVideo.title}</div>
           </div>
-        )}
-
-        {/* Bottom Navigation */}
-        <nav className="fixed bottom-0 left-0 right-0 max-w-md mx-auto bg-white border-t border-gray-200 flex justify-around items-center py-2 z-40 shadow-lg">
-          <button onClick={() => { setCurrentTab('Home'); setSelectedShow(null); setSelectedGenreView(null); }} className={`flex flex-col items-center gap-0.5 ${currentTab === 'Home' ? 'text-[#FF2A7A]' : 'text-gray-400'}`}>
-            <span className="text-xl">🏠</span>
-            <span className="text-[10px] font-bold">Home</span>
-          </button>
-          <button onClick={() => { setCurrentTab('My Lists'); setSelectedShow(null); setSelectedGenreView(null); }} className={`flex flex-col items-center gap-0.5 ${currentTab === 'My Lists' ? 'text-[#FF2A7A]' : 'text-gray-400'}`}>
-            <span className="text-xl">🔖</span>
-            <span className="text-[10px] font-bold">My Lists</span>
-          </button>
-          <button onClick={() => { setCurrentTab('Browse'); setSelectedShow(null); setSelectedGenreView(null); }} className={`flex flex-col items-center gap-0.5 ${currentTab === 'Browse' ? 'text-[#FF2A7A]' : 'text-gray-400'}`}>
-            <span className="text-xl">㗊</span>
-            <span className="text-[10px] font-bold">Browse</span>
-          </button>
-          <button onClick={() => { setCurrentTab('Account'); setSelectedShow(null); setSelectedGenreView(null); }} className={`flex flex-col items-center gap-0.5 ${currentTab === 'Account' ? 'text-[#FF2A7A]' : 'text-gray-400'}`}>
-            <span className="text-xl">👤</span>
-            <span className="text-[10px] font-bold">Account</span>
-          </button>
-        </nav>
-
-      </div>
+        </div>
+      )}
     </main>
   );
 }
+
+// Inline CSS Styles for Crunchyroll theme
+const styles: { [key: string]: React.CSSProperties } = {
+  main: {
+    backgroundColor: '#0b0b0b',
+    color: '#ffffff',
+    minHeight: '100vh',
+    paddingBottom: '60px',
+    fontFamily: 'Segoe UI, Roboto, Helvetica, Arial, sans-serif',
+  },
+  header: {
+    position: 'sticky',
+    top: 0,
+    zIndex: 100,
+    backgroundColor: 'rgba(11, 11, 11, 0.95)',
+    backdropFilter: 'blur(10px)',
+    display: 'flex',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    padding: '14px 24px',
+    borderBottom: '1px solid #222',
+  },
+  logo: {
+    fontSize: '1.4rem',
+    fontWeight: 800,
+    color: '#f47521',
+    textTransform: 'uppercase',
+    letterSpacing: '1px',
+    cursor: 'pointer',
+    display: 'flex',
+    alignItems: 'center',
+    gap: '8px',
+  },
+  searchBox: {
+    backgroundColor: '#222',
+    borderRadius: '20px',
+    padding: '6px 14px',
+    display: 'flex',
+    alignItems: 'center',
+  },
+  searchInput: {
+    background: 'transparent',
+    border: 'none',
+    color: '#fff',
+    outline: 'none',
+    fontSize: '0.9rem',
+  },
+  hero: {
+    position: 'relative',
+    height: '340px',
+    background:
+      "linear-gradient(to top, #0b0b0b, transparent 80%), linear-gradient(to right, rgba(11,11,11,0.9), transparent 60%), url('https://images.unsplash.com/photo-1578632767115-351597cf2477?w=1200') center/cover",
+    display: 'flex',
+    flexDirection: 'column',
+    justifyContent: 'flex-end',
+    padding: '30px 24px',
+  },
+  heroTitle: {
+    fontSize: '2.2rem',
+    marginBottom: '6px',
+  },
+  heroDesc: {
+    color: '#a0a0a0',
+    maxWidth: '500px',
+    fontSize: '0.95rem',
+    marginBottom: '16px',
+    lineHeight: 1.4,
+  },
+  playBtn: {
+    backgroundColor: '#f47521',
+    color: '#fff',
+    border: 'none',
+    padding: '10px 24px',
+    borderRadius: '6px',
+    fontSize: '1rem',
+    fontWeight: 600,
+    cursor: 'pointer',
+    width: 'fit-content',
+  },
+  sectionHeader: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: '8px',
+    padding: '24px 24px 14px',
+  },
+  sectionBar: {
+    width: '4px',
+    height: '18px',
+    backgroundColor: '#f47521',
+    borderRadius: '2px',
+  },
+  sectionTitle: {
+    fontSize: '1.3rem',
+    fontWeight: 700,
+    margin: 0,
+  },
+  statusText: {
+    padding: '20px 24px',
+    color: '#a0a0a0',
+    fontSize: '1rem',
+  },
+  grid: {
+    display: 'grid',
+    gridTemplateColumns: 'repeat(auto-fill, minmax(180px, 1fr))',
+    gap: '16px',
+    padding: '0 24px',
+  },
+  card: {
+    backgroundColor: '#1a1a1a',
+    borderRadius: '8px',
+    overflow: 'hidden',
+    cursor: 'pointer',
+    border: '1px solid transparent',
+    transition: 'transform 0.2s',
+  },
+  cardImg: {
+    width: '100%',
+    height: '240px',
+    objectFit: 'cover',
+    backgroundColor: '#151515',
+    display: 'block',
+  },
+  cardInfo: {
+    padding: '10px',
+  },
+  cardTitle: {
+    fontSize: '0.95rem',
+    fontWeight: 600,
+    whiteSpace: 'nowrap',
+    overflow: 'hidden',
+    textOverflow: 'ellipsis',
+  },
+  cardMeta: {
+    fontSize: '0.8rem',
+    color: '#a0a0a0',
+    marginTop: '5px',
+    display: 'flex',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  modalBackdrop: {
+    position: 'fixed',
+    inset: 0,
+    backgroundColor: 'rgba(0, 0, 0, 0.94)',
+    zIndex: 1000,
+    display: 'flex',
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: '20px',
+  },
+  modalWrapper: {
+    position: 'relative',
+    width: '100%',
+    maxWidth: '960px',
+  },
+  playerContainer: {
+    width: '100%',
+    aspectRatio: '16 / 9',
+    backgroundColor: '#000',
+    borderRadius: '10px',
+    overflow: 'hidden',
+    boxShadow: '0 10px 30px rgba(0, 0, 0, 0.8)',
+  },
+  iframe: {
+    width: '100%',
+    height: '100%',
+    border: 'none',
+    display: 'block',
+  },
+  closeBtn: {
+    position: 'absolute',
+    top: '-38px',
+    right: 0,
+    background: 'none',
+    border: 'none',
+    color: '#fff',
+    fontSize: '1.8rem',
+    cursor: 'pointer',
+  },
+  nowPlayingText: {
+    marginTop: '14px',
+    fontSize: '1.1rem',
+    fontWeight: 600,
+    color: '#fff',
+  },
+};
