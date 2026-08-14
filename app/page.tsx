@@ -18,7 +18,7 @@ export default function Home() {
   const [searchQuery, setSearchQuery] = useState('');
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
-  const [activeVideo, setActiveVideo] = useState<{ title: string; id: string } | null>(null);
+  const [activeVideo, setActiveVideo] = useState<{ title: string; id: string; rawUrl: string } | null>(null);
 
   useEffect(() => {
     async function fetchDriveVideos() {
@@ -64,6 +64,17 @@ export default function Home() {
     }
   };
 
+  // Deep Link Launchers
+  const openInVidHub = (fileId: string) => {
+    const directStreamUrl = `https://www.googleapis.com/drive/v3/files/${fileId}?alt=media&key=${GOOGLE_API_KEY}`;
+    window.location.href = `vidhub://play?url=${encodeURIComponent(directStreamUrl)}`;
+  };
+
+  const openInVLC = (fileId: string) => {
+    const directStreamUrl = `https://www.googleapis.com/drive/v3/files/${fileId}?alt=media&key=${GOOGLE_API_KEY}`;
+    window.location.href = `vlc://${directStreamUrl}`;
+  };
+
   return (
     <main style={styles.main}>
       {/* Top Navbar */}
@@ -86,20 +97,29 @@ export default function Home() {
       <section style={styles.hero}>
         <h1 style={styles.heroTitle}>AnimeToon Cloud</h1>
         <p style={styles.heroDesc}>
-          High-speed anime streaming synced directly from your Google Drive library.
+          Direct Google Drive stream synced with VidHub Premium hardware acceleration.
         </p>
         {episodes.length > 0 && (
-          <button
-            style={styles.playBtn}
-            onClick={() =>
-              setActiveVideo({
-                title: episodes[0].name.replace(/\.[^/.]+$/, ''),
-                id: episodes[0].id,
-              })
-            }
-          >
-            ▶ Watch Latest
-          </button>
+          <div style={{ display: 'flex', gap: '10px' }}>
+            <button
+              style={styles.playBtn}
+              onClick={() =>
+                setActiveVideo({
+                  title: episodes[0].name.replace(/\.[^/.]+$/, ''),
+                  id: episodes[0].id,
+                  rawUrl: `https://www.googleapis.com/drive/v3/files/${episodes[0].id}?alt=media&key=${GOOGLE_API_KEY}`,
+                })
+              }
+            >
+              ▶ Web Player
+            </button>
+            <button
+              style={styles.vidhubHeroBtn}
+              onClick={() => openInVidHub(episodes[0].id)}
+            >
+              🚀 Play in VidHub
+            </button>
+          </div>
         )}
       </section>
 
@@ -124,27 +144,57 @@ export default function Home() {
             : 'https://images.unsplash.com/photo-1578632767115-351597cf2477?w=500';
 
           return (
-            <div
-              key={file.id}
-              style={styles.card}
-              onClick={() => setActiveVideo({ title: titleClean, id: file.id })}
-            >
+            <div key={file.id} style={styles.card}>
               <img
                 src={thumbnail}
                 alt={file.name}
                 style={styles.cardImg}
+                onClick={() =>
+                  setActiveVideo({
+                    title: titleClean,
+                    id: file.id,
+                    rawUrl: `https://www.googleapis.com/drive/v3/files/${file.id}?alt=media&key=${GOOGLE_API_KEY}`,
+                  })
+                }
                 onError={(e) => {
                   (e.target as HTMLImageElement).src =
                     'https://images.unsplash.com/photo-1578632767115-351597cf2477?w=500';
                 }}
               />
               <div style={styles.cardInfo}>
-                <div style={styles.cardTitle} title={titleClean}>
+                <div
+                  style={styles.cardTitle}
+                  title={titleClean}
+                  onClick={() =>
+                    setActiveVideo({
+                      title: titleClean,
+                      id: file.id,
+                      rawUrl: `https://www.googleapis.com/drive/v3/files/${file.id}?alt=media&key=${GOOGLE_API_KEY}`,
+                    })
+                  }
+                >
                   {titleClean}
                 </div>
-                <div style={styles.cardMeta}>
-                  <span>Drive HD</span>
-                  <span style={{ color: '#f47521', fontWeight: 600 }}>▶ Play</span>
+                <div style={styles.btnRow}>
+                  <button
+                    style={styles.actionBtnWeb}
+                    onClick={() =>
+                      setActiveVideo({
+                        title: titleClean,
+                        id: file.id,
+                        rawUrl: `https://www.googleapis.com/drive/v3/files/${file.id}?alt=media&key=${GOOGLE_API_KEY}`,
+                      })
+                    }
+                  >
+                    ▶ Web
+                  </button>
+                  <button
+                    style={styles.actionBtnVidhub}
+                    onClick={() => openInVidHub(file.id)}
+                    title="Launch directly in VidHub"
+                  >
+                    🚀 VidHub
+                  </button>
                 </div>
               </div>
             </div>
@@ -167,7 +217,23 @@ export default function Home() {
                 style={styles.iframe}
               />
             </div>
-            <div style={styles.nowPlayingText}>Playing: {activeVideo.title}</div>
+            <div style={styles.modalFooter}>
+              <div style={styles.nowPlayingText}>Playing: {activeVideo.title}</div>
+              <div style={{ display: 'flex', gap: '8px' }}>
+                <button
+                  style={styles.modalVidhubBtn}
+                  onClick={() => openInVidHub(activeVideo.id)}
+                >
+                  Open in VidHub App
+                </button>
+                <button
+                  style={styles.modalVlcBtn}
+                  onClick={() => openInVLC(activeVideo.id)}
+                >
+                  VLC
+                </button>
+              </div>
+            </div>
           </div>
         </div>
       )}
@@ -175,7 +241,7 @@ export default function Home() {
   );
 }
 
-// Inline CSS Styles for Crunchyroll theme
+// Styling (Crunchyroll Dark & Orange Theme)
 const styles: { [key: string]: React.CSSProperties } = {
   main: {
     backgroundColor: '#0b0b0b',
@@ -246,12 +312,21 @@ const styles: { [key: string]: React.CSSProperties } = {
     backgroundColor: '#f47521',
     color: '#fff',
     border: 'none',
-    padding: '10px 24px',
+    padding: '10px 20px',
     borderRadius: '6px',
-    fontSize: '1rem',
+    fontSize: '0.95rem',
     fontWeight: 600,
     cursor: 'pointer',
-    width: 'fit-content',
+  },
+  vidhubHeroBtn: {
+    backgroundColor: '#1f1f1f',
+    color: '#fff',
+    border: '1px solid #444',
+    padding: '10px 20px',
+    borderRadius: '6px',
+    fontSize: '0.95rem',
+    fontWeight: 600,
+    cursor: 'pointer',
   },
   sectionHeader: {
     display: 'flex',
@@ -285,34 +360,56 @@ const styles: { [key: string]: React.CSSProperties } = {
     backgroundColor: '#1a1a1a',
     borderRadius: '8px',
     overflow: 'hidden',
-    cursor: 'pointer',
-    border: '1px solid transparent',
-    transition: 'transform 0.2s',
+    border: '1px solid #282828',
+    display: 'flex',
+    flexDirection: 'column',
+    justifyContent: 'space-between',
   },
   cardImg: {
     width: '100%',
-    height: '240px',
+    height: '220px',
     objectFit: 'cover',
     backgroundColor: '#151515',
+    cursor: 'pointer',
     display: 'block',
   },
   cardInfo: {
     padding: '10px',
   },
   cardTitle: {
-    fontSize: '0.95rem',
+    fontSize: '0.9rem',
     fontWeight: 600,
     whiteSpace: 'nowrap',
     overflow: 'hidden',
     textOverflow: 'ellipsis',
+    marginBottom: '8px',
+    cursor: 'pointer',
   },
-  cardMeta: {
-    fontSize: '0.8rem',
-    color: '#a0a0a0',
-    marginTop: '5px',
+  btnRow: {
     display: 'flex',
-    justifyContent: 'space-between',
-    alignItems: 'center',
+    gap: '6px',
+  },
+  actionBtnWeb: {
+    flex: 1,
+    backgroundColor: '#282828',
+    color: '#fff',
+    border: 'none',
+    borderRadius: '4px',
+    padding: '6px 0',
+    fontSize: '0.8rem',
+    fontWeight: 600,
+    cursor: 'pointer',
+  },
+  actionBtnVidhub: {
+    flex: 1,
+    backgroundColor: '#f47521',
+    color: '#fff',
+    border: 'none',
+    borderRadius: '4px',
+    padding: '6px 0',
+    fontSize: '0.8rem',
+    fontWeight: 600,
+    cursor: 'pointer',
   },
   modalBackdrop: {
     position: 'fixed',
@@ -353,10 +450,37 @@ const styles: { [key: string]: React.CSSProperties } = {
     fontSize: '1.8rem',
     cursor: 'pointer',
   },
-  nowPlayingText: {
+  modalFooter: {
     marginTop: '14px',
-    fontSize: '1.1rem',
+    display: 'flex',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    flexWrap: 'wrap',
+    gap: '10px',
+  },
+  nowPlayingText: {
+    fontSize: '1rem',
     fontWeight: 600,
     color: '#fff',
+  },
+  modalVidhubBtn: {
+    backgroundColor: '#f47521',
+    color: '#fff',
+    border: 'none',
+    borderRadius: '6px',
+    padding: '8px 14px',
+    fontSize: '0.85rem',
+    fontWeight: 600,
+    cursor: 'pointer',
+  },
+  modalVlcBtn: {
+    backgroundColor: '#ff8800',
+    color: '#fff',
+    border: 'none',
+    borderRadius: '6px',
+    padding: '8px 14px',
+    fontSize: '0.85rem',
+    fontWeight: 600,
+    cursor: 'pointer',
   },
 };
