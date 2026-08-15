@@ -12,6 +12,7 @@ interface DriveFile {
 export default function Home() {
   const GOOGLE_API_KEY = "AIzaSyCwhYhosnTrfHyi6N1C0N8AJl4gT85xg9w";
   const FOLDER_ID = "1qJu2_VmnxluIFlgARfX-G606W-tCDAlG";
+  const PROXY_BASE = "https://animetoon-proxy.thinkingnew.workers.dev";
 
   const [episodes, setEpisodes] = useState<DriveFile[]>([]);
   const [filteredEpisodes, setFilteredEpisodes] = useState<DriveFile[]>([]);
@@ -105,7 +106,7 @@ export default function Home() {
         </div>
       </section>
 
-      {/* Section Title */}
+      {/* Episode Header */}
       <div style={styles.sectionHeader}>
         <span style={styles.sectionBar}></span>
         <h2 style={styles.sectionTitle}>Episodes</h2>
@@ -117,7 +118,7 @@ export default function Home() {
         <p style={styles.statusText}>No video files found in this folder.</p>
       )}
 
-      {/* Grid */}
+      {/* Video Grid */}
       <div style={styles.grid}>
         {filteredEpisodes.map((file) => {
           const titleClean = file.name.replace(/\.[^/.]+$/, '');
@@ -159,7 +160,7 @@ export default function Home() {
         })}
       </div>
 
-      {/* Pure Smooth Crunchyroll Stream Player */}
+      {/* Native Stream Player Modal */}
       {activeVideo && (
         <div style={styles.modalBackdrop}>
           <div style={styles.modalWrapper}>
@@ -167,12 +168,17 @@ export default function Home() {
               ✕
             </button>
             <div style={styles.playerContainer}>
-              <iframe
-                src={`https://drive.google.com/file/d/${activeVideo.id}/preview`}
-                allow="autoplay; fullscreen"
-                allowFullScreen
-                style={styles.iframe}
-              />
+              <video
+                key={activeVideo.id}
+                src={`${PROXY_BASE}/?id=${activeVideo.id}`}
+                controls
+                autoPlay
+                playsInline
+                preload="auto"
+                style={styles.videoElement}
+              >
+                Your browser does not support playing this video format.
+              </video>
             </div>
             <div style={styles.nowPlayingText}>
               Playing: <span style={{ color: '#fff' }}>{activeVideo.title}</span>
@@ -184,7 +190,7 @@ export default function Home() {
   );
 }
 
-// Crunchyroll-Style Dark & Orange Clean Theme
+// Crunchyroll-Style Dark & Orange Theme
 const styles: { [key: string]: React.CSSProperties } = {
   main: {
     backgroundColor: '#000000',
@@ -374,12 +380,16 @@ const styles: { [key: string]: React.CSSProperties } = {
     borderRadius: '8px',
     overflow: 'hidden',
     border: '1px solid #222222',
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
   },
-  iframe: {
+  videoElement: {
     width: '100%',
     height: '100%',
-    border: 'none',
+    objectFit: 'contain',
     display: 'block',
+    outline: 'none',
   },
   closeBtn: {
     position: 'absolute',
