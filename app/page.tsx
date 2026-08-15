@@ -57,7 +57,7 @@ export default function Home() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
 
-  // My Lists Storage: { [animeId]: { categoryKey, anime, date } }
+  // My Lists Storage
   const [savedUserLists, setSavedUserLists] = useState<{ [key: string]: { categoryKey: string; anime: AnimeItem; date: string } }>({});
   const [showListModal, setShowListModal] = useState(false);
 
@@ -76,7 +76,7 @@ export default function Home() {
   const [showControls, setShowControls] = useState(true);
   const controlsTimer = useRef<NodeJS.Timeout | null>(null);
 
-  // Swipe Gestures (Volume / Brightness)
+  // Swipe Gestures
   const [volume, setVolume] = useState(1);
   const [brightness, setBrightness] = useState(1);
   const [activeGesture, setActiveGesture] = useState<'volume' | 'brightness' | null>(null);
@@ -85,35 +85,26 @@ export default function Home() {
   const touchStartX = useRef<number>(0);
   const startLevel = useRef<number>(0);
 
-  // Load Saved User Lists from localStorage
   useEffect(() => {
     try {
       const stored = localStorage.getItem('animetoon_user_lists');
-      if (stored) {
-        setSavedUserLists(JSON.parse(stored));
-      }
+      if (stored) setSavedUserLists(JSON.parse(stored));
     } catch (e) {
       console.error(e);
     }
   }, []);
 
-  // Save to localStorage
   const saveAnimeToList = (anime: AnimeItem, categoryKey: string) => {
     const today = new Date().toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
     const updated = {
       ...savedUserLists,
-      [anime.id]: {
-        categoryKey,
-        anime,
-        date: today,
-      },
+      [anime.id]: { categoryKey, anime, date: today },
     };
     setSavedUserLists(updated);
     localStorage.setItem('animetoon_user_lists', JSON.stringify(updated));
     setShowListModal(false);
   };
 
-  // 1. Fetch Zones and Catalog
   useEffect(() => {
     async function fetchCatalog() {
       try {
@@ -134,7 +125,6 @@ export default function Home() {
           );
           const animeData = await animeRes.json();
           const files: DriveItem[] = animeData.files || [];
-
           const animeList: AnimeItem[] = [];
 
           for (const item of files) {
@@ -148,12 +138,8 @@ export default function Home() {
               const t1 = imgFiles.find((f) => f.name.toLowerCase().includes('thumbnail1'));
               const t2 = imgFiles.find((f) => f.name.toLowerCase().includes('thumbnail2'));
 
-              const thumb1Url = t1?.thumbnailLink
-                ? t1.thumbnailLink.replace(/=s\d+/, '=s1000')
-                : item.thumbnailLink?.replace(/=s\d+/, '=s1000');
-              const thumb2Url = t2?.thumbnailLink
-                ? t2.thumbnailLink.replace(/=s\d+/, '=s1400')
-                : thumb1Url;
+              const thumb1Url = t1?.thumbnailLink ? t1.thumbnailLink.replace(/=s\d+/, '=s1000') : item.thumbnailLink?.replace(/=s\d+/, '=s1000');
+              const thumb2Url = t2?.thumbnailLink ? t2.thumbnailLink.replace(/=s\d+/, '=s1400') : thumb1Url;
 
               const animeObj: AnimeItem = {
                 id: item.id,
@@ -170,11 +156,7 @@ export default function Home() {
           }
 
           if (animeList.length > 0) {
-            loadedZones.push({
-              id: z.id,
-              name: z.name,
-              animes: animeList,
-            });
+            loadedZones.push({ id: z.id, name: z.name, animes: animeList });
           }
         }
 
@@ -193,7 +175,6 @@ export default function Home() {
     fetchCatalog();
   }, []);
 
-  // 2. Fetch Seasons & Episodes on Anime Click
   const openAnimeDetails = async (anime: AnimeItem) => {
     setSelectedAnime(anime);
     setLoadingDetails(true);
@@ -205,9 +186,7 @@ export default function Home() {
       const files: DriveItem[] = data.files || [];
 
       const seasonFolders = files.filter((f) => f.mimeType === 'application/vnd.google-apps.folder');
-      const directVideos = files.filter(
-        (f) => (f.mimeType && f.mimeType.includes('video')) || f.name.match(/\.(mp4|mkv|webm|avi)$/i)
-      );
+      const directVideos = files.filter((f) => (f.mimeType && f.mimeType.includes('video')) || f.name.match(/\.(mp4|mkv|webm|avi)$/i));
 
       const loadedSeasons: SeasonItem[] = [];
 
@@ -220,18 +199,10 @@ export default function Home() {
           const epFiles: DriveItem[] = (epData.files || []).filter(
             (f: DriveItem) => (f.mimeType && f.mimeType.includes('video')) || f.name.match(/\.(mp4|mkv|webm|avi)$/i)
           );
-          loadedSeasons.push({
-            id: s.id,
-            name: s.name,
-            episodes: epFiles,
-          });
+          loadedSeasons.push({ id: s.id, name: s.name, episodes: epFiles });
         }
       } else if (directVideos.length > 0) {
-        loadedSeasons.push({
-          id: anime.id,
-          name: 'Season 1',
-          episodes: directVideos,
-        });
+        loadedSeasons.push({ id: anime.id, name: 'Season 1', episodes: directVideos });
       }
 
       setSeasons(loadedSeasons);
@@ -243,7 +214,6 @@ export default function Home() {
     }
   };
 
-  // Video Controls
   const resetControlsTimer = () => {
     setShowControls(true);
     if (controlsTimer.current) clearTimeout(controlsTimer.current);
@@ -274,7 +244,6 @@ export default function Home() {
     return `-${formatTime(Math.max(0, dur - curr))}`;
   };
 
-  // Swipe Gestures
   const handleTouchStart = (e: React.TouchEvent) => {
     if (e.touches.length !== 1) return;
     const touch = e.touches[0];
@@ -309,7 +278,6 @@ export default function Home() {
 
   const currentStreamUrl = activeEpisode ? `${PROXY_BASE}/?id=${activeEpisode.id}` : '';
 
-  // Get anime for a specific category in My Lists
   const getAnimesInCategory = (categoryKey: string) => {
     return Object.values(savedUserLists)
       .filter((item) => item.categoryKey === categoryKey)
@@ -318,9 +286,9 @@ export default function Home() {
 
   return (
     <main style={styles.main}>
-      {/* ────────────────── 1. MAIN SCREENS (HOME / MY LISTS / BROWSE) ────────────────── */}
+      {/* ────────────────── 1. MAIN TABS ────────────────── */}
       {!selectedAnime && !viewAllZone && !selectedListCategory && (
-        <div style={{ paddingBottom: '80px' }}>
+        <div style={{ paddingBottom: '85px' }}>
           {/* TAB 1: HOME PAGE */}
           {currentTab === 'home' && (
             <>
@@ -435,7 +403,7 @@ export default function Home() {
             </>
           )}
 
-          {/* TAB 2: MY LISTS PAGE (Image 2 style) */}
+          {/* TAB 2: MY LISTS */}
           {currentTab === 'mylists' && (
             <div style={styles.myListsContainer}>
               <header style={styles.pageTopBar}>
@@ -467,7 +435,7 @@ export default function Home() {
             </div>
           )}
 
-          {/* TAB 3: BROWSE ALL ANIME PAGE (Image 3 style) */}
+          {/* TAB 3: BROWSE ALL */}
           {currentTab === 'browse' && (
             <div style={styles.browseContainer}>
               <header style={styles.pageTopBar}>
@@ -590,7 +558,7 @@ export default function Home() {
         </div>
       )}
 
-      {/* ────────────────── 4. ANIME DETAIL & EPISODES SCREEN ────────────────── */}
+      {/* ────────────────── 4. ANIME DETAIL SCREEN ────────────────── */}
       {selectedAnime && (
         <div style={styles.detailPage}>
           <div
@@ -645,14 +613,12 @@ export default function Home() {
             </p>
             <span style={styles.moreDetailsText}>More Details</span>
 
-            {/* Tabs */}
             <div style={styles.tabsRow}>
               <span style={styles.tabActive}>Episodes</span>
               <span style={styles.tabInactive}>Featured Music</span>
               <span style={styles.tabInactive}>More Like This</span>
             </div>
 
-            {/* Season Selector */}
             {seasons.length > 0 && (
               <div style={styles.seasonSelectorRow}>
                 <select
@@ -675,7 +641,6 @@ export default function Home() {
 
             {loadingDetails && <p style={styles.statusText}>Loading season episodes...</p>}
 
-            {/* Episode List */}
             <div style={styles.episodeList}>
               {seasons[selectedSeasonIndex]?.episodes.map((ep, idx) => {
                 const epTitle = ep.name.replace(/\.[^/.]+$/, '');
@@ -714,7 +679,6 @@ export default function Home() {
             </div>
           </div>
 
-          {/* Sticky Bottom Watch Button */}
           {seasons.length > 0 && seasons[0].episodes.length > 0 && (
             <div style={styles.stickyBottomBar}>
               <button
@@ -739,7 +703,7 @@ export default function Home() {
         </div>
       )}
 
-      {/* ────────────────── 5. ADD TO MY LIST BOTTOM SHEET MODAL ────────────────── */}
+      {/* ────────────────── 5. ADD TO MY LIST MODAL ────────────────── */}
       {showListModal && selectedAnime && (
         <div style={styles.modalOverlay} onClick={() => setShowListModal(false)}>
           <div style={styles.listModalContent} onClick={(e) => e.stopPropagation()}>
@@ -876,7 +840,7 @@ export default function Home() {
         </div>
       )}
 
-      {/* ────────────────── 7. STICKY BOTTOM NAVIGATION BAR ────────────────── */}
+      {/* ────────────────── 7. BOTTOM NAVIGATION BAR ────────────────── */}
       {!selectedAnime && !activeEpisode && (
         <nav style={styles.bottomNav}>
           <div
@@ -887,7 +851,7 @@ export default function Home() {
               setSelectedListCategory(null);
             }}
           >
-            <span>🏠</span>
+            <span style={{ fontSize: '1.2rem' }}>🏠</span>
             <span>Home</span>
           </div>
 
@@ -899,7 +863,7 @@ export default function Home() {
               setSelectedListCategory(null);
             }}
           >
-            <span>🔖</span>
+            <span style={{ fontSize: '1.2rem' }}>🔖</span>
             <span>My Lists</span>
           </div>
 
@@ -911,7 +875,7 @@ export default function Home() {
               setSelectedListCategory(null);
             }}
           >
-            <span>▦</span>
+            <span style={{ fontSize: '1.2rem' }}>▦</span>
             <span>Browse</span>
           </div>
         </nav>
@@ -920,7 +884,7 @@ export default function Home() {
   );
 }
 
-// ────────────────── PIXEL-PERFECT STYLING ──────────────────
+// ────────────────── PIXEL-PERFECT BALANCED STYLING ──────────────────
 const styles: { [key: string]: React.CSSProperties } = {
   main: {
     backgroundColor: '#000000',
@@ -934,11 +898,11 @@ const styles: { [key: string]: React.CSSProperties } = {
     left: 0,
     right: 0,
     zIndex: 100,
-    background: 'linear-gradient(to bottom, rgba(0, 0, 0, 0.8) 0%, rgba(0, 0, 0, 0.4) 60%, transparent 100%)',
+    background: 'linear-gradient(to bottom, rgba(0, 0, 0, 0.85) 0%, rgba(0, 0, 0, 0.4) 60%, transparent 100%)',
     display: 'flex',
     justifyContent: 'space-between',
     alignItems: 'center',
-    padding: '16px 20px',
+    padding: '16px 18px',
   },
   homeLogo: {
     display: 'flex',
@@ -975,19 +939,19 @@ const styles: { [key: string]: React.CSSProperties } = {
   },
   heroBanner: {
     position: 'relative',
-    height: '520px',
+    height: '500px',
     backgroundSize: 'cover',
     backgroundPosition: 'center top',
     display: 'flex',
     flexDirection: 'column',
     justifyContent: 'flex-end',
-    padding: '24px 18px',
+    padding: '24px 16px',
   },
   heroContent: {
     maxWidth: '550px',
   },
   heroTitle: {
-    fontSize: '2.1rem',
+    fontSize: '2rem',
     fontWeight: 900,
     textTransform: 'uppercase',
     letterSpacing: '1px',
@@ -1036,6 +1000,7 @@ const styles: { [key: string]: React.CSSProperties } = {
     fontSize: '0.98rem',
     fontWeight: 800,
     cursor: 'pointer',
+    letterSpacing: '0.2px',
   },
   bookmarkBtn: {
     width: '48px',
@@ -1058,19 +1023,21 @@ const styles: { [key: string]: React.CSSProperties } = {
     borderRadius: '2px',
     backgroundColor: 'rgba(255, 255, 255, 0.3)',
   },
+  // Zone Sections & Rigid 3-Column Grid
   zoneSection: {
-    padding: '22px 18px 0',
+    padding: '20px 14px 0',
   },
   zoneHeader: {
     display: 'flex',
     justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: '12px',
+    marginBottom: '10px',
   },
   zoneTitle: {
-    fontSize: '1.18rem',
+    fontSize: '1.15rem',
     fontWeight: 800,
     margin: 0,
+    letterSpacing: '0.2px',
   },
   viewAllBtn: {
     background: 'none',
@@ -1082,19 +1049,23 @@ const styles: { [key: string]: React.CSSProperties } = {
   },
   animeGrid: {
     display: 'grid',
-    gridTemplateColumns: 'repeat(3, 1fr)',
-    gap: '12px',
+    gridTemplateColumns: 'repeat(3, minmax(0, 1fr))',
+    gap: '10px',
     alignItems: 'start',
+    width: '100%',
   },
   animeCard: {
     display: 'flex',
     flexDirection: 'column',
     cursor: 'pointer',
     width: '100%',
+    maxWidth: '100%',
+    overflow: 'hidden',
   },
   posterContainer: {
     width: '100%',
     aspectRatio: '2 / 3',
+    maxHeight: '170px',
     borderRadius: '4px',
     overflow: 'hidden',
     backgroundColor: '#161616',
@@ -1111,31 +1082,38 @@ const styles: { [key: string]: React.CSSProperties } = {
     display: 'flex',
     flexDirection: 'column',
     gap: '2px',
+    width: '100%',
   },
   animeCardTitle: {
-    fontSize: '0.84rem',
+    fontSize: '0.8rem',
     fontWeight: 600,
     color: '#ffffff',
     whiteSpace: 'nowrap',
     overflow: 'hidden',
     textOverflow: 'ellipsis',
     lineHeight: 1.25,
+    width: '100%',
   },
   cardSubTextRow: {
     display: 'flex',
     justifyContent: 'space-between',
     alignItems: 'center',
+    width: '100%',
   },
   dubSubTag: {
-    fontSize: '0.72rem',
+    fontSize: '0.7rem',
     color: '#777777',
     fontWeight: 500,
+    whiteSpace: 'nowrap',
+    overflow: 'hidden',
+    textOverflow: 'ellipsis',
   },
   menuDots: {
-    fontSize: '0.9rem',
+    fontSize: '0.85rem',
     color: '#666666',
+    flexShrink: 0,
   },
-  // My Lists (Image 2 style)
+  // My Lists
   myListsContainer: {
     padding: '20px 16px',
   },
@@ -1179,17 +1157,15 @@ const styles: { [key: string]: React.CSSProperties } = {
     fontSize: '1.2rem',
     color: '#888888',
   },
-  // Browse Container
   browseContainer: {
-    padding: '20px 16px',
+    padding: '20px 14px',
   },
   browseCount: {
     fontSize: '0.85rem',
     color: '#888888',
   },
-  // Sub-Pages (View All & Category Details)
   viewAllPage: {
-    padding: '20px 16px 80px',
+    padding: '20px 14px 80px',
   },
   subPageHeader: {
     display: 'flex',
@@ -1209,7 +1185,6 @@ const styles: { [key: string]: React.CSSProperties } = {
     fontWeight: 800,
     margin: 0,
   },
-  // Bottom Navigation (3 items)
   bottomNav: {
     position: 'fixed',
     bottom: 0,
@@ -1231,7 +1206,6 @@ const styles: { [key: string]: React.CSSProperties } = {
     fontWeight: 600,
     cursor: 'pointer',
   },
-  // Modal for Add to My Lists
   modalOverlay: {
     position: 'fixed',
     inset: 0,
@@ -1280,7 +1254,6 @@ const styles: { [key: string]: React.CSSProperties } = {
     alignItems: 'center',
     cursor: 'pointer',
   },
-  // Detail Page
   detailPage: {
     backgroundColor: '#000000',
     minHeight: '100vh',
@@ -1506,7 +1479,6 @@ const styles: { [key: string]: React.CSSProperties } = {
     alignItems: 'center',
     justifyContent: 'center',
   },
-  // Video Player
   playerBackdrop: {
     position: 'fixed',
     inset: 0,
