@@ -23,32 +23,34 @@ export default function Home() {
 
   // Player state
   const videoRef = useRef<HTMLVideoElement | null>(null);
+  const containerRef = useRef<HTMLDivElement | null>(null);
   const [isPlaying, setIsPlaying] = useState(true);
   const [currentTime, setCurrentTime] = useState(0);
   const [duration, setDuration] = useState(0);
   const [showControls, setShowControls] = useState(true);
-  const controlsTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const controlsTimer = useRef<NodeJS.Timeout | null>(null);
 
-  // Gestures (Volume & Brightness)
+  // Swipe Gesture States
   const [volume, setVolume] = useState(1);
   const [brightness, setBrightness] = useState(1);
-  const [gestureType, setGestureType] = useState<'volume' | 'brightness' | null>(null);
-  const [gestureValue, setGestureValue] = useState<number>(100);
+  const [activeGesture, setActiveGesture] = useState<'volume' | 'brightness' | null>(null);
+  const [gesturePercent, setGesturePercent] = useState<number>(100);
   const touchStartY = useRef<number>(0);
   const touchStartX = useRef<number>(0);
-  const startVal = useRef<number>(0);
+  const startLevel = useRef<number>(0);
 
-  // Audio & Subtitle Modal
-  const [showTrackModal, setShowTrackModal] = useState(false);
+  // Audio / Subtitle Sheet
+  const [showTrackSheet, setShowTrackSheet] = useState(false);
   const [selectedAudio, setSelectedAudio] = useState(0);
-  const [selectedSubtitle, setSelectedSubtitle] = useState(0);
+  const [selectedSub, setSelectedSub] = useState(0);
 
   const audioTracks = [
     { id: -1, label: 'Disable track' },
-    { id: 0, label: 'Track 1 - (Telugu / Main)' },
-    { id: 1, label: 'Track 2 - (Hindi / Dub)' },
-    { id: 2, label: 'Track 3 - (English / Dub)' },
-    { id: 3, label: 'Track 4 - (Japanese / Original)' },
+    { id: 0, label: 'Track 1 - (Main / Default)' },
+    { id: 1, label: 'Track 2 - (Telugu Dub)' },
+    { id: 2, label: 'Track 3 - (Hindi Dub)' },
+    { id: 3, label: 'Track 4 - (English Dub)' },
+    { id: 4, label: 'Track 5 - (Japanese Dub)' },
   ];
 
   const subTracks = [
@@ -101,12 +103,12 @@ export default function Home() {
     }
   };
 
-  // Video Time & Control Handlers
-  const handleTimeUpdate = () => {
-    if (videoRef.current) {
-      setCurrentTime(videoRef.current.currentTime);
-      setDuration(videoRef.current.duration || 0);
-    }
+  const resetControlsTimer = () => {
+    setShowControls(true);
+    if (controlsTimer.current) clearTimeout(controlsTimer.current);
+    controlsTimer.current = setTimeout(() => {
+      setShowControls(false);
+    }, 4000);
   };
 
   const togglePlay = () => {
@@ -121,20 +123,19 @@ export default function Home() {
     resetControlsTimer();
   };
 
-  const handleSeek = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const time = Number(e.target.value);
+  const handleTimeUpdate = () => {
     if (videoRef.current) {
-      videoRef.current.currentTime = time;
-      setCurrentTime(time);
+      setCurrentTime(videoRef.current.currentTime);
+      setDuration(videoRef.current.duration || 0);
     }
   };
 
-  const resetControlsTimer = () => {
-    setShowControls(true);
-    if (controlsTimeoutRef.current) clearTimeout(controlsTimeoutRef.current);
-    controlsTimeoutRef.current = setTimeout(() => {
-      setShowControls(false);
-    }, 3500);
+  const handleSeek = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const val = Number(e.target.value);
+    if (videoRef.current) {
+      videoRef.current.currentTime = val;
+      setCurrentTime(val);
+    }
   };
 
   const formatTime = (secs: number) => {
@@ -146,48 +147,47 @@ export default function Home() {
 
   const formatCountdown = (curr: number, dur: number) => {
     if (isNaN(dur) || isNaN(curr)) return '-0:00';
-    const rem = dur - curr;
+    const rem = Math.max(0, dur - curr);
     return `-${formatTime(rem)}`;
   };
 
-  // Touch Swipe Gesture for Volume (Left side) and Brightness (Right side)
+  // Smooth Gesture Handling
   const handleTouchStart = (e: React.TouchEvent) => {
     if (e.touches.length !== 1) return;
     const touch = e.touches[0];
-    const width = window.innerWidth;
+    const screenWidth = window.innerWidth;
     touchStartX.current = touch.clientX;
     touchStartY.current = touch.clientY;
 
-    if (touch.clientX < width / 2) {
-      setGestureType('volume');
-      startVal.current = volume;
+    if (touch.clientX < screenWidth / 2) {
+      setActiveGesture('volume');
+      startLevel.current = volume;
     } else {
-      setGestureType('brightness');
-      startVal.current = brightness;
+      setActiveGesture('brightness');
+      startLevel.current = brightness;
     }
   };
 
   const handleTouchMove = (e: React.TouchEvent) => {
-    if (!gestureType || e.touches.length !== 1) return;
+    if (!activeGesture || e.touches.length !== 1) return;
     const touch = e.touches[0];
     const deltaY = touchStartY.current - touch.clientY;
-    const sensitivity = 0.005;
+    const change = deltaY / 220; // smoothness factor
 
-    let newVal = Math.min(Math.max(startVal.current + deltaY * sensitivity, 0), 1);
-
-    if (gestureType === 'volume') {
-      setVolume(newVal);
-      if (videoRef.current) videoRef.current.volume = newVal;
-      setGestureValue(Math.round(newVal * 100));
+    if (activeGesture === 'volume') {
+      const newVol = Math.min(Math.max(startLevel.current + change, 0), 1);
+      setVolume(newVol);
+      if (videoRef.current) videoRef.current.volume = newVol;
+      setGesturePercent(Math.round(newVol * 100));
     } else {
-      newVal = Math.max(newVal, 0.2); // minimum 20% brightness
-      setBrightness(newVal);
-      setGestureValue(Math.round(newVal * 100));
+      const newBri = Math.min(Math.max(startLevel.current + change, 0.2), 1);
+      setBrightness(newBri);
+      setGesturePercent(Math.round(newBri * 100));
     }
   };
 
   const handleTouchEnd = () => {
-    setTimeout(() => setGestureType(null), 800);
+    setTimeout(() => setActiveGesture(null), 800);
   };
 
   const streamUrl = activeVideo ? `${PROXY_BASE}/?id=${activeVideo.id}` : '';
@@ -215,17 +215,19 @@ export default function Home() {
         <div style={styles.heroContent}>
           <h1 style={styles.heroTitle}>AnimeToon Player</h1>
           <p style={styles.heroDesc}>
-            Swipe gestures, multi-track audio switching, and HD cloud streaming.
+            Dual & Multi-audio fast cloud streaming directly in high definition.
           </p>
           {episodes.length > 0 && (
             <button
               style={styles.playBtn}
-              onClick={() =>
+              onClick={() => {
                 setActiveVideo({
                   title: episodes[0].name.replace(/\.[^/.]+$/, ''),
                   id: episodes[0].id,
-                })
-              }
+                });
+                setIsPlaying(true);
+                setShowControls(true);
+              }}
             >
               ▶ Watch Latest Episode
             </button>
@@ -239,13 +241,13 @@ export default function Home() {
         <h2 style={styles.sectionTitle}>Episodes</h2>
       </div>
 
-      {loading && <p style={styles.statusText}>Loading anime library...</p>}
+      {loading && <p style={styles.statusText}>Loading anime files...</p>}
       {error && <p style={{ ...styles.statusText, color: '#ff5555' }}>{error}</p>}
       {!loading && !error && filteredEpisodes.length === 0 && (
-        <p style={styles.statusText}>No video files found.</p>
+        <p style={styles.statusText}>No videos found in this folder.</p>
       )}
 
-      {/* Video Grid */}
+      {/* Grid */}
       <div style={styles.grid}>
         {filteredEpisodes.map((file) => {
           const titleClean = file.name.replace(/\.[^/.]+$/, '');
@@ -283,7 +285,7 @@ export default function Home() {
                 </div>
                 <div style={styles.cardMeta}>
                   <span>Multi-Audio</span>
-                  <span style={{ color: '#f47521', fontWeight: 600 }}>Play</span>
+                  <span style={{ color: '#f47521', fontWeight: 600 }}>Stream</span>
                 </div>
               </div>
             </div>
@@ -295,12 +297,14 @@ export default function Home() {
       {activeVideo && (
         <div style={styles.playerBackdrop}>
           <div
-            style={styles.playerBox}
+            ref={containerRef}
+            style={styles.playerContainer}
             onClick={resetControlsTimer}
             onTouchStart={handleTouchStart}
             onTouchMove={handleTouchMove}
             onTouchEnd={handleTouchEnd}
           >
+            {/* Native Video without interfering default controls */}
             <video
               ref={videoRef}
               src={streamUrl}
@@ -309,95 +313,104 @@ export default function Home() {
               onTimeUpdate={handleTimeUpdate}
               onEnded={() => setIsPlaying(false)}
               style={{
-                ...styles.videoStream,
+                ...styles.videoElement,
                 filter: `brightness(${brightness})`,
               }}
             />
 
-            {/* Left Gesture OSD (Volume) */}
-            {gestureType === 'volume' && (
-              <div style={styles.osdLeft}>
-                <span style={styles.osdPercent}>{gestureValue}%</span>
-                <div style={styles.osdBarContainer}>
-                  <div style={{ ...styles.osdBarFill, height: `${gestureValue}%` }} />
+            {/* Left Gesture Indicator (Volume) */}
+            {activeGesture === 'volume' && (
+              <div style={styles.osdBoxLeft}>
+                <span style={styles.osdPercent}>{gesturePercent}%</span>
+                <div style={styles.osdTrack}>
+                  <div style={{ ...styles.osdFill, height: `${gesturePercent}%` }} />
                 </div>
                 <span style={styles.osdLabel}>Volume</span>
-                <span style={{ fontSize: '1.2rem' }}>🔊</span>
               </div>
             )}
 
-            {/* Right Gesture OSD (Brightness) */}
-            {gestureType === 'brightness' && (
-              <div style={styles.osdRight}>
-                <span style={styles.osdPercent}>{gestureValue}%</span>
-                <div style={styles.osdBarContainer}>
-                  <div style={{ ...styles.osdBarFill, height: `${gestureValue}%` }} />
+            {/* Right Gesture Indicator (Brightness) */}
+            {activeGesture === 'brightness' && (
+              <div style={styles.osdBoxRight}>
+                <span style={styles.osdPercent}>{gesturePercent}%</span>
+                <div style={styles.osdTrack}>
+                  <div style={{ ...styles.osdFill, height: `${gesturePercent}%` }} />
                 </div>
                 <span style={styles.osdLabel}>Brightness</span>
-                <span style={{ fontSize: '1.2rem' }}>☀️</span>
               </div>
             )}
 
-            {/* Player Overlay Controls */}
+            {/* Touch Overlay Controls */}
             {showControls && (
-              <div style={styles.controlsOverlay}>
+              <div style={styles.controlsLayer}>
                 {/* Top Title Bar */}
-                <div style={styles.topControlBar}>
-                  <button style={styles.backBtn} onClick={() => setActiveVideo(null)}>
+                <div style={styles.topBar}>
+                  <button
+                    style={styles.closeBtn}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setActiveVideo(null);
+                    }}
+                  >
                     ✕
                   </button>
-                  <div style={styles.topVideoTitle}>{activeVideo.title}</div>
-                  <div style={{ width: '32px' }}></div>
+                  <div style={styles.titleText}>{activeVideo.title}</div>
+                  <div style={{ width: 36 }}></div>
                 </div>
 
-                {/* Center Play/Pause Circle */}
-                <div style={styles.centerControl} onClick={togglePlay}>
-                  <button style={styles.centerPlayBtn}>
+                {/* Center Play/Pause Button */}
+                <div style={styles.centerBox}>
+                  <button
+                    style={styles.centerPlayBtn}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      togglePlay();
+                    }}
+                  >
                     {isPlaying ? '⏸' : '▶'}
                   </button>
                 </div>
 
-                {/* Bottom Control Bar */}
-                <div style={styles.bottomControlBar}>
-                  {/* Seek Bar */}
-                  <div style={styles.timeSeekRow}>
-                    <span style={styles.timeText}>{formatTime(currentTime)}</span>
+                {/* Bottom Bar */}
+                <div style={styles.bottomBar}>
+                  {/* Progress Slider */}
+                  <div style={styles.progressRow}>
+                    <span style={styles.timeLabel}>{formatTime(currentTime)}</span>
                     <input
                       type="range"
                       min={0}
                       max={duration || 100}
                       value={currentTime}
                       onChange={handleSeek}
-                      style={styles.rangeInput}
+                      style={styles.progressBar}
                     />
-                    <span style={styles.timeText}>{formatCountdown(currentTime, duration)}</span>
+                    <span style={styles.timeLabel}>{formatCountdown(currentTime, duration)}</span>
                   </div>
 
-                  {/* Actions Row */}
-                  <div style={styles.actionsRow}>
+                  {/* Actions & Track Sheet Toggle */}
+                  <div style={styles.controlButtonsRow}>
                     <button
-                      style={styles.iconBtn}
+                      style={styles.sheetTriggerBtn}
                       onClick={(e) => {
                         e.stopPropagation();
-                        setShowTrackModal(true);
+                        setShowTrackSheet(true);
                       }}
-                      title="Audio & Subtitles"
                     >
-                      💬
+                      💬 Audio & Subtitles
                     </button>
+
                     <button
-                      style={styles.iconBtn}
+                      style={styles.fullscreenBtn}
                       onClick={(e) => {
                         e.stopPropagation();
-                        if (videoRef.current) {
+                        if (containerRef.current) {
                           if (document.fullscreenElement) {
                             document.exitFullscreen();
                           } else {
-                            videoRef.current.requestFullscreen();
+                            containerRef.current.requestFullscreen();
                           }
                         }
                       }}
-                      title="Fullscreen"
                     >
                       ⛶
                     </button>
@@ -406,68 +419,83 @@ export default function Home() {
               </div>
             )}
 
-            {/* Audio & Subtitles Bottom Sheet Modal (Screenshots 3 layout) */}
-            {showTrackModal && (
+            {/* Audio & Subtitle Modal Sheet */}
+            {showTrackSheet && (
               <div
-                style={styles.sheetBackdrop}
+                style={styles.sheetOverlay}
                 onClick={(e) => {
                   e.stopPropagation();
-                  setShowTrackModal(false);
+                  setShowTrackSheet(false);
                 }}
               >
-                <div style={styles.sheetContent} onClick={(e) => e.stopPropagation()}>
-                  <div style={styles.sheetHeader}>
-                    <div style={styles.sheetColTitle}>Audio ▾</div>
-                    <div style={styles.sheetColTitle}>Subtitles ▾</div>
+                <div style={styles.sheetModal} onClick={(e) => e.stopPropagation()}>
+                  <div style={styles.sheetTopRow}>
+                    <div style={styles.sheetTitle}>Audio ▾</div>
+                    <div style={styles.sheetTitle}>Subtitles ▾</div>
                   </div>
 
-                  <div style={styles.sheetColumns}>
-                    {/* Audio Column */}
+                  <div style={styles.sheetTrackListWrapper}>
+                    {/* Audio Track Selector */}
                     <div style={styles.sheetColumn}>
-                      {audioTracks.map((trk) => (
+                      {audioTracks.map((item) => (
                         <div
-                          key={trk.id}
+                          key={item.id}
                           style={{
-                            ...styles.trackRow,
-                            color: selectedAudio === trk.id ? '#ffffff' : '#888888',
-                            fontWeight: selectedAudio === trk.id ? 700 : 400,
+                            ...styles.trackItem,
+                            color: selectedAudio === item.id ? '#ffffff' : '#888888',
+                            fontWeight: selectedAudio === item.id ? 700 : 400,
                           }}
-                          onClick={() => {
-                            setSelectedAudio(trk.id);
-                            const v = videoRef.current as any;
-                            if (v && v.audioTracks && v.audioTracks.length > 0 && trk.id >= 0) {
-                              for (let i = 0; i < v.audioTracks.length; i++) {
-                                v.audioTracks[i].enabled = (i === trk.id);
-                              }
-                            }
-                          }}
+                          onClick={() => setSelectedAudio(item.id)}
                         >
-                          <span style={styles.checkSlot}>
-                            {selectedAudio === trk.id ? '✓' : ''}
+                          <span style={styles.checkMark}>
+                            {selectedAudio === item.id ? '✓' : ''}
                           </span>
-                          <span>{trk.label}</span>
+                          <span>{item.label}</span>
                         </div>
                       ))}
                     </div>
 
-                    {/* Subtitles Column */}
+                    {/* Subtitle Track Selector */}
                     <div style={styles.sheetColumn}>
-                      {subTracks.map((sub) => (
+                      {subTracks.map((item) => (
                         <div
-                          key={sub.id}
+                          key={item.id}
                           style={{
-                            ...styles.trackRow,
-                            color: selectedSubtitle === sub.id ? '#ffffff' : '#888888',
-                            fontWeight: selectedSubtitle === sub.id ? 700 : 400,
+                            ...styles.trackItem,
+                            color: selectedSub === item.id ? '#ffffff' : '#888888',
+                            fontWeight: selectedSub === item.id ? 700 : 400,
                           }}
-                          onClick={() => setSelectedSubtitle(sub.id)}
+                          onClick={() => setSelectedSub(item.id)}
                         >
-                          <span style={styles.checkSlot}>
-                            {selectedSubtitle === sub.id ? '✓' : ''}
+                          <span style={styles.checkMark}>
+                            {selectedSub === item.id ? '✓' : ''}
                           </span>
-                          <span>{sub.label}</span>
+                          <span>{item.label}</span>
                         </div>
                       ))}
+                    </div>
+                  </div>
+
+                  {/* Fast External Multi-Audio Switcher */}
+                  <div style={styles.fallbackPlayerRow}>
+                    <span style={styles.fallbackLabel}>Play Full Multi-Audio (Telugu/Hindi/Eng):</span>
+                    <div style={{ display: 'flex', gap: '8px' }}>
+                      <button
+                        style={styles.appSwitchBtnVidhub}
+                        onClick={() => {
+                          window.location.href = `vidhub://play?url=${encodeURIComponent(streamUrl)}`;
+                        }}
+                      >
+                        🚀 VidHub App
+                      </button>
+                      <button
+                        style={styles.appSwitchBtnVlc}
+                        onClick={() => {
+                          window.location.href = `vlc://${streamUrl}`;
+                        }}
+                      >
+                        ⚡ VLC Player
+                      </button>
                     </div>
                   </div>
                 </div>
@@ -480,7 +508,7 @@ export default function Home() {
   );
 }
 
-// Styling (Mobile-First Crunchyroll / VLC Aesthetic)
+// Crunchyroll-Style Dark Layout CSS
 const styles: { [key: string]: React.CSSProperties } = {
   main: {
     backgroundColor: '#000000',
@@ -643,7 +671,6 @@ const styles: { [key: string]: React.CSSProperties } = {
     display: 'flex',
     justifyContent: 'space-between',
   },
-  // Video Player Overlay
   playerBackdrop: {
     position: 'fixed',
     inset: 0,
@@ -653,7 +680,7 @@ const styles: { [key: string]: React.CSSProperties } = {
     alignItems: 'center',
     justifyContent: 'center',
   },
-  playerBox: {
+  playerContainer: {
     position: 'relative',
     width: '100%',
     height: '100%',
@@ -663,130 +690,141 @@ const styles: { [key: string]: React.CSSProperties } = {
     justifyContent: 'center',
     touchAction: 'none',
   },
-  videoStream: {
+  videoElement: {
     width: '100%',
     height: '100%',
     objectFit: 'contain',
   },
-  controlsOverlay: {
+  controlsLayer: {
     position: 'absolute',
     inset: 0,
-    backgroundColor: 'rgba(0, 0, 0, 0.4)',
+    backgroundColor: 'rgba(0, 0, 0, 0.45)',
     display: 'flex',
     flexDirection: 'column',
     justifyContent: 'space-between',
-    padding: '16px 20px',
+    padding: '20px 24px',
+    zIndex: 10,
   },
-  topControlBar: {
+  topBar: {
     display: 'flex',
     alignItems: 'center',
     justifyContent: 'space-between',
   },
-  backBtn: {
+  closeBtn: {
     background: 'none',
     border: 'none',
-    color: '#fff',
-    fontSize: '1.5rem',
+    color: '#ffffff',
+    fontSize: '1.6rem',
     cursor: 'pointer',
+    padding: '4px',
   },
-  topVideoTitle: {
-    color: '#fff',
+  titleText: {
+    color: '#ffffff',
     fontSize: '0.95rem',
     fontWeight: 600,
-    textAlign: 'center',
-    maxWidth: '70%',
+    maxWidth: '75%',
     overflow: 'hidden',
     textOverflow: 'ellipsis',
     whiteSpace: 'nowrap',
   },
-  centerControl: {
+  centerBox: {
     display: 'flex',
     alignItems: 'center',
     justifyContent: 'center',
   },
   centerPlayBtn: {
-    width: '64px',
-    height: '64px',
+    width: '68px',
+    height: '68px',
     borderRadius: '50%',
-    backgroundColor: 'rgba(0, 0, 0, 0.65)',
-    border: '2px solid rgba(255, 255, 255, 0.8)',
+    backgroundColor: 'rgba(0, 0, 0, 0.7)',
+    border: '2px solid rgba(255, 255, 255, 0.9)',
     color: '#ffffff',
-    fontSize: '1.6rem',
+    fontSize: '1.8rem',
     display: 'flex',
     alignItems: 'center',
     justifyContent: 'center',
     cursor: 'pointer',
   },
-  bottomControlBar: {
+  bottomBar: {
     display: 'flex',
     flexDirection: 'column',
-    gap: '10px',
+    gap: '12px',
   },
-  timeSeekRow: {
+  progressRow: {
     display: 'flex',
     alignItems: 'center',
     gap: '12px',
   },
-  timeText: {
+  timeLabel: {
     fontSize: '0.8rem',
     color: '#ffffff',
-    minWidth: '40px',
     fontVariantNumeric: 'tabular-nums',
   },
-  rangeInput: {
+  progressBar: {
     flex: 1,
     accentColor: '#f47521',
     cursor: 'pointer',
   },
-  actionsRow: {
+  controlButtonsRow: {
     display: 'flex',
-    justifyContent: 'flex-end',
-    gap: '16px',
+    justifyContent: 'space-between',
+    alignItems: 'center',
   },
-  iconBtn: {
+  sheetTriggerBtn: {
+    background: 'rgba(255, 255, 255, 0.1)',
+    border: '1px solid rgba(255, 255, 255, 0.2)',
+    color: '#ffffff',
+    borderRadius: '4px',
+    padding: '6px 12px',
+    fontSize: '0.8rem',
+    fontWeight: 600,
+    cursor: 'pointer',
+  },
+  fullscreenBtn: {
     background: 'none',
     border: 'none',
     color: '#ffffff',
-    fontSize: '1.3rem',
+    fontSize: '1.4rem',
     cursor: 'pointer',
   },
-  // OSD Left & Right Sliders
-  osdLeft: {
+  // OSD Gesture Indicators
+  osdBoxLeft: {
     position: 'absolute',
-    left: '24px',
-    top: '35%',
+    left: '28px',
+    top: '30%',
     display: 'flex',
     flexDirection: 'column',
     alignItems: 'center',
-    gap: '6px',
+    gap: '8px',
     pointerEvents: 'none',
+    zIndex: 20,
   },
-  osdRight: {
+  osdBoxRight: {
     position: 'absolute',
-    right: '24px',
-    top: '35%',
+    right: '28px',
+    top: '30%',
     display: 'flex',
     flexDirection: 'column',
     alignItems: 'center',
-    gap: '6px',
+    gap: '8px',
     pointerEvents: 'none',
+    zIndex: 20,
   },
   osdPercent: {
-    fontSize: '0.85rem',
+    fontSize: '0.9rem',
     fontWeight: 700,
     color: '#ffffff',
   },
-  osdBarContainer: {
+  osdTrack: {
     width: '6px',
-    height: '90px',
-    backgroundColor: 'rgba(255, 255, 255, 0.3)',
+    height: '110px',
+    backgroundColor: 'rgba(255, 255, 255, 0.25)',
     borderRadius: '3px',
-    position: 'relative',
     display: 'flex',
     flexDirection: 'column-reverse',
     overflow: 'hidden',
   },
-  osdBarFill: {
+  osdFill: {
     width: '100%',
     backgroundColor: '#f47521',
   },
@@ -795,57 +833,91 @@ const styles: { [key: string]: React.CSSProperties } = {
     color: '#ffffff',
     fontWeight: 600,
   },
-  // Audio & Subtitle Bottom Sheet Modal
-  sheetBackdrop: {
+  // Bottom Sheet Modal
+  sheetOverlay: {
     position: 'absolute',
     inset: 0,
-    backgroundColor: 'rgba(0, 0, 0, 0.65)',
+    backgroundColor: 'rgba(0, 0, 0, 0.75)',
     display: 'flex',
     alignItems: 'flex-end',
     zIndex: 100,
   },
-  sheetContent: {
+  sheetModal: {
     width: '100%',
-    backgroundColor: '#121212',
+    backgroundColor: '#111111',
     borderTopLeftRadius: '16px',
     borderTopRightRadius: '16px',
     padding: '20px',
-    maxHeight: '65vh',
-    overflowY: 'auto',
-    borderTop: '1px solid #282828',
+    maxHeight: '75vh',
+    borderTop: '1px solid #242424',
+    display: 'flex',
+    flexDirection: 'column',
+    gap: '16px',
   },
-  sheetHeader: {
+  sheetTopRow: {
     display: 'flex',
     borderBottom: '1px solid #222222',
-    paddingBottom: '12px',
-    marginBottom: '14px',
+    paddingBottom: '10px',
   },
-  sheetColTitle: {
+  sheetTitle: {
     flex: 1,
-    fontSize: '1rem',
+    fontSize: '0.95rem',
     fontWeight: 700,
     color: '#ffffff',
   },
-  sheetColumns: {
+  sheetTrackListWrapper: {
     display: 'flex',
-    gap: '20px',
+    gap: '16px',
+    maxHeight: '180px',
+    overflowY: 'auto',
   },
   sheetColumn: {
     flex: 1,
     display: 'flex',
     flexDirection: 'column',
-    gap: '12px',
+    gap: '10px',
   },
-  trackRow: {
+  trackItem: {
     display: 'flex',
     alignItems: 'center',
     gap: '8px',
-    fontSize: '0.88rem',
+    fontSize: '0.82rem',
     cursor: 'pointer',
   },
-  checkSlot: {
+  checkMark: {
     width: '16px',
     color: '#f47521',
     fontWeight: 900,
+  },
+  fallbackPlayerRow: {
+    borderTop: '1px solid #222222',
+    paddingTop: '12px',
+    display: 'flex',
+    flexDirection: 'column',
+    gap: '8px',
+  },
+  fallbackLabel: {
+    fontSize: '0.78rem',
+    color: '#aaaaaa',
+  },
+  appSwitchBtnVidhub: {
+    backgroundColor: '#f47521',
+    color: '#000000',
+    border: 'none',
+    borderRadius: '4px',
+    padding: '6px 12px',
+    fontSize: '0.8rem',
+    fontWeight: 700,
+    cursor: 'pointer',
+  },
+  appSwitchBtnVlc: {
+    backgroundColor: '#ff8800',
+    color: '#ffffff',
+    border: 'none',
+    borderRadius: '4px',
+    padding: '6px 12px',
+    fontSize: '0.8rem',
+    fontWeight: 700,
+    cursor: 'pointer',
   },
 };
