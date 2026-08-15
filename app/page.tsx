@@ -12,13 +12,14 @@ interface DriveFile {
 export default function Home() {
   const GOOGLE_API_KEY = "AIzaSyCwhYhosnTrfHyi6N1C0N8AJl4gT85xg9w";
   const FOLDER_ID = "1qJu2_VmnxluIFlgARfX-G606W-tCDAlG";
+  const WORKER_PROXY_URL = "https://animetoon-proxy.thinkingnew.workers.dev";
 
   const [episodes, setEpisodes] = useState<DriveFile[]>([]);
   const [filteredEpisodes, setFilteredEpisodes] = useState<DriveFile[]>([]);
   const [searchQuery, setSearchQuery] = useState('');
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
-  const [activeVideo, setActiveVideo] = useState<{ title: string; id: string; rawUrl: string } | null>(null);
+  const [activeVideo, setActiveVideo] = useState<{ title: string; streamUrl: string } | null>(null);
 
   useEffect(() => {
     async function fetchDriveVideos() {
@@ -64,15 +65,16 @@ export default function Home() {
     }
   };
 
-  // Deep Link Launchers
+  const getStreamUrl = (fileId: string) => `${WORKER_PROXY_URL}/?id=${fileId}`;
+
   const openInVidHub = (fileId: string) => {
-    const directStreamUrl = `https://www.googleapis.com/drive/v3/files/${fileId}?alt=media&key=${GOOGLE_API_KEY}`;
-    window.location.href = `vidhub://play?url=${encodeURIComponent(directStreamUrl)}`;
+    const streamUrl = getStreamUrl(fileId);
+    window.location.href = `vidhub://play?url=${encodeURIComponent(streamUrl)}`;
   };
 
   const openInVLC = (fileId: string) => {
-    const directStreamUrl = `https://www.googleapis.com/drive/v3/files/${fileId}?alt=media&key=${GOOGLE_API_KEY}`;
-    window.location.href = `vlc://${directStreamUrl}`;
+    const streamUrl = getStreamUrl(fileId);
+    window.location.href = `vlc://${streamUrl}`;
   };
 
   return (
@@ -97,7 +99,7 @@ export default function Home() {
       <section style={styles.hero}>
         <h1 style={styles.heroTitle}>AnimeToon Cloud</h1>
         <p style={styles.heroDesc}>
-          Direct Google Drive stream synced with VidHub Premium hardware acceleration.
+          Direct Cloudflare-accelerated streaming synced with VidHub Premium.
         </p>
         {episodes.length > 0 && (
           <div style={{ display: 'flex', gap: '10px' }}>
@@ -106,8 +108,7 @@ export default function Home() {
               onClick={() =>
                 setActiveVideo({
                   title: episodes[0].name.replace(/\.[^/.]+$/, ''),
-                  id: episodes[0].id,
-                  rawUrl: `https://www.googleapis.com/drive/v3/files/${episodes[0].id}?alt=media&key=${GOOGLE_API_KEY}`,
+                  streamUrl: getStreamUrl(episodes[0].id),
                 })
               }
             >
@@ -142,6 +143,7 @@ export default function Home() {
           const thumbnail = file.thumbnailLink
             ? file.thumbnailLink.replace('=s220', '=s500')
             : 'https://images.unsplash.com/photo-1578632767115-351597cf2477?w=500';
+          const streamUrl = getStreamUrl(file.id);
 
           return (
             <div key={file.id} style={styles.card}>
@@ -149,13 +151,7 @@ export default function Home() {
                 src={thumbnail}
                 alt={file.name}
                 style={styles.cardImg}
-                onClick={() =>
-                  setActiveVideo({
-                    title: titleClean,
-                    id: file.id,
-                    rawUrl: `https://www.googleapis.com/drive/v3/files/${file.id}?alt=media&key=${GOOGLE_API_KEY}`,
-                  })
-                }
+                onClick={() => setActiveVideo({ title: titleClean, streamUrl })}
                 onError={(e) => {
                   (e.target as HTMLImageElement).src =
                     'https://images.unsplash.com/photo-1578632767115-351597cf2477?w=500';
@@ -165,26 +161,14 @@ export default function Home() {
                 <div
                   style={styles.cardTitle}
                   title={titleClean}
-                  onClick={() =>
-                    setActiveVideo({
-                      title: titleClean,
-                      id: file.id,
-                      rawUrl: `https://www.googleapis.com/drive/v3/files/${file.id}?alt=media&key=${GOOGLE_API_KEY}`,
-                    })
-                  }
+                  onClick={() => setActiveVideo({ title: titleClean, streamUrl })}
                 >
                   {titleClean}
                 </div>
                 <div style={styles.btnRow}>
                   <button
                     style={styles.actionBtnWeb}
-                    onClick={() =>
-                      setActiveVideo({
-                        title: titleClean,
-                        id: file.id,
-                        rawUrl: `https://www.googleapis.com/drive/v3/files/${file.id}?alt=media&key=${GOOGLE_API_KEY}`,
-                      })
-                    }
+                    onClick={() => setActiveVideo({ title: titleClean, streamUrl })}
                   >
                     ▶ Web
                   </button>
@@ -210,25 +194,34 @@ export default function Home() {
               ✕
             </button>
             <div style={styles.playerContainer}>
-              <iframe
-                src={`https://drive.google.com/file/d/${activeVideo.id}/preview`}
-                allow="autoplay; fullscreen"
-                allowFullScreen
-                style={styles.iframe}
-              />
+              <video
+                src={activeVideo.streamUrl}
+                controls
+                autoPlay
+                playsInline
+                style={styles.videoPlayer}
+              >
+                Your browser does not support HTML5 video.
+              </video>
             </div>
             <div style={styles.modalFooter}>
               <div style={styles.nowPlayingText}>Playing: {activeVideo.title}</div>
               <div style={{ display: 'flex', gap: '8px' }}>
                 <button
                   style={styles.modalVidhubBtn}
-                  onClick={() => openInVidHub(activeVideo.id)}
+                  onClick={() =>
+                    (window.location.href = `vidhub://play?url=${encodeURIComponent(
+                      activeVideo.streamUrl
+                    )}`)
+                  }
                 >
                   Open in VidHub App
                 </button>
                 <button
                   style={styles.modalVlcBtn}
-                  onClick={() => openInVLC(activeVideo.id)}
+                  onClick={() =>
+                    (window.location.href = `vlc://${activeVideo.streamUrl}`)
+                  }
                 >
                   VLC
                 </button>
@@ -241,7 +234,7 @@ export default function Home() {
   );
 }
 
-// Styling (Crunchyroll Dark & Orange Theme)
+// Crunchyroll-Style Theme
 const styles: { [key: string]: React.CSSProperties } = {
   main: {
     backgroundColor: '#0b0b0b',
@@ -434,10 +427,9 @@ const styles: { [key: string]: React.CSSProperties } = {
     overflow: 'hidden',
     boxShadow: '0 10px 30px rgba(0, 0, 0, 0.8)',
   },
-  iframe: {
+  videoPlayer: {
     width: '100%',
     height: '100%',
-    border: 'none',
     display: 'block',
   },
   closeBtn: {
