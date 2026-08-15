@@ -45,7 +45,7 @@ export default function Home() {
   const ROOT_FOLDER_ID = "1qJu2_VmnxluIFlgARfX-G606W-tCDAlG";
   const PROXY_BASE = "https://animetoon-proxy.thinkingnew.workers.dev";
 
-  // Navigation State
+  // Tab & Navigation State
   const [currentTab, setCurrentTab] = useState<TabType>('home');
   const [viewAllZone, setViewAllZone] = useState<ZoneGroup | null>(null);
   const [selectedListCategory, setSelectedListCategory] = useState<string | null>(null);
@@ -53,7 +53,7 @@ export default function Home() {
   // Data states
   const [zones, setZones] = useState<ZoneGroup[]>([]);
   const [allAnimes, setAllAnimes] = useState<AnimeItem[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [initialLoading, setInitialLoading] = useState(true);
   const [error, setError] = useState('');
 
   // Hero Carousel State
@@ -65,10 +65,11 @@ export default function Home() {
   const [savedUserLists, setSavedUserLists] = useState<{ [key: string]: { categoryKey: string; anime: AnimeItem; date: string } }>({});
   const [showListModal, setShowListModal] = useState(false);
 
-  // Details & Player navigation
+  // Details & Season Select Navigation
   const [selectedAnime, setSelectedAnime] = useState<AnimeItem | null>(null);
   const [seasons, setSeasons] = useState<SeasonItem[]>([]);
   const [selectedSeasonIndex, setSelectedSeasonIndex] = useState(0);
+  const [showSeasonsPage, setShowSeasonsPage] = useState(false);
   const [loadingDetails, setLoadingDetails] = useState(false);
 
   // Video Player state
@@ -89,13 +90,29 @@ export default function Home() {
   const touchStartX = useRef<number>(0);
   const startLevel = useRef<number>(0);
 
-  // 1. Android Mobile Back Button Stack Handling (History Popstate)
-  useEffect(() => {
-    window.history.replaceState({ page: 'home' }, '');
+  const seasonsCache = useRef<{ [key: string]: SeasonItem[] }>({});
 
-    const handlePopState = (event: PopStateEvent) => {
+  // 1. Strict Step-by-Step Back Button Stack
+  useEffect(() => {
+    // Inject dark theme color meta tag to remove white status bar/strip
+    let meta = document.querySelector('meta[name="theme-color"]');
+    if (!meta) {
+      meta = document.createElement('meta');
+      meta.setAttribute('name', 'theme-color');
+      document.head.appendChild(meta);
+    }
+    meta.setAttribute('content', '#000000');
+
+    window.history.replaceState({ depth: 0, view: 'root' }, '');
+
+    const handlePopState = (e: PopStateEvent) => {
+      // Step backwards layer-by-layer
       if (activeEpisode) {
         setActiveEpisode(null);
+        return;
+      }
+      if (showSeasonsPage) {
+        setShowSeasonsPage(false);
         return;
       }
       if (showListModal) {
@@ -121,13 +138,17 @@ export default function Home() {
 
     window.addEventListener('popstate', handlePopState);
     return () => window.removeEventListener('popstate', handlePopState);
-  }, [activeEpisode, showListModal, selectedAnime, viewAllZone, selectedListCategory, currentTab]);
+  }, [activeEpisode, showSeasonsPage, showListModal, selectedAnime, viewAllZone, selectedListCategory, currentTab]);
 
-  const pushNavStep = (stepName: string) => {
-    window.history.pushState({ page: stepName }, '');
+  const pushStep = (viewName: string) => {
+    window.history.pushState({ view: viewName }, '');
   };
 
-  // Load Saved User Lists
+  const goBackStep = () => {
+    window.history.back();
+  };
+
+  // 2. Local Storage for My Lists with Add / Remove Toggle
   useEffect(() => {
     try {
       const stored = localStorage.getItem('animetoon_user_lists');
@@ -137,22 +158,54 @@ export default function Home() {
     }
   }, []);
 
-  const saveAnimeToList = (anime: AnimeItem, categoryKey: string) => {
-    const today = new Date().toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
-    const updated = {
-      ...savedUserLists,
-      [anime.id]: { categoryKey, anime, date: today },
-    };
+  const toggleAnimeListCategory = (anime: AnimeItem, categoryKey: string) => {
+    const existing = savedUserLists[anime.id];
+    let updated = { ...savedUserLists };
+
+    if (existing && existing.categoryKey === categoryKey) {
+      // If tapped again, remove from list
+      delete updated[anime.id];
+    } else {
+      // Add or update category
+      const today = new Date().toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+      updated[anime.id] = { categoryKey, anime, date: today };
+    }
+
     setSavedUserLists(updated);
     localStorage.setItem('animetoon_user_lists', JSON.stringify(updated));
-    setShowListModal(false);
+    goBackStep();
   };
 
-  // 2. Fetch Catalog from Google Drive
+  const removeAnimeFromListExplicitly = (animeId: string) => {
+    const updated = { ...savedUserLists };
+    delete updated[animeId];
+    setSavedUserLists(updated);
+    localStorage.setItem('animetoon_user_lists', JSON.stringify(updated));
+    goBackStep();
+  };
+
+  // 3. Parallel Catalog Fetch with Session Cache
   useEffect(() => {
-    async function fetchCatalog() {
+    let isMounted = true;
+
+    async function loadCatalog() {
+      const cachedData = sessionStorage.getItem('animetoon_catalog_cache');
+      if (cachedData) {
+        try {
+          const parsed = JSON.parse(cachedData);
+          if (parsed.zones && parsed.zones.length > 0) {
+            setZones(parsed.zones);
+            setAllAnimes(parsed.allAnimes);
+            setInitialLoading(false);
+            return;
+          }
+        } catch (e) {
+          console.error(e);
+        }
+      }
+
       try {
-        setLoading(true);
+        setInitialLoading(true);
         const res = await fetch(
           `https://www.googleapis.com/drive/v3/files?q='${ROOT_FOLDER_ID}'+in+parents+and+mimeType='application/vnd.google-apps.folder'+and+trashed=false&fields=files(id,name)&orderBy=name&key=${GOOGLE_API_KEY}`
         );
@@ -160,63 +213,83 @@ export default function Home() {
         if (zoneData.error) throw new Error(zoneData.error.message);
 
         const zoneFolders: DriveItem[] = zoneData.files || [];
-        const loadedZones: ZoneGroup[] = [];
-        const accumulatedAnimes: AnimeItem[] = [];
 
-        for (const z of zoneFolders) {
-          const animeRes = await fetch(
-            `https://www.googleapis.com/drive/v3/files?q='${z.id}'+in+parents+and+trashed=false&fields=files(id,name,mimeType,thumbnailLink)&key=${GOOGLE_API_KEY}`
-          );
-          const animeData = await animeRes.json();
-          const files: DriveItem[] = animeData.files || [];
-          const animeList: AnimeItem[] = [];
-
-          for (const item of files) {
-            if (item.mimeType === 'application/vnd.google-apps.folder') {
-              const imgRes = await fetch(
-                `https://www.googleapis.com/drive/v3/files?q='${item.id}'+in+parents+and+mimeType+contains+'image/'+and+trashed=false&fields=files(id,name,thumbnailLink)&key=${GOOGLE_API_KEY}`
+        const zoneResults = await Promise.all(
+          zoneFolders.map(async (z) => {
+            try {
+              const animeRes = await fetch(
+                `https://www.googleapis.com/drive/v3/files?q='${z.id}'+in+parents+and+trashed=false&fields=files(id,name,mimeType,thumbnailLink)&key=${GOOGLE_API_KEY}`
               );
-              const imgData = await imgRes.json();
-              const imgFiles: DriveItem[] = imgData.files || [];
+              const animeData = await animeRes.json();
+              const files: DriveItem[] = animeData.files || [];
+              const animeFolders = files.filter((f) => f.mimeType === 'application/vnd.google-apps.folder');
 
-              const t1 = imgFiles.find((f) => f.name.toLowerCase().includes('thumbnail1'));
-              const t2 = imgFiles.find((f) => f.name.toLowerCase().includes('thumbnail2'));
+              const animeList: AnimeItem[] = await Promise.all(
+                animeFolders.map(async (item) => {
+                  try {
+                    const imgRes = await fetch(
+                      `https://www.googleapis.com/drive/v3/files?q='${item.id}'+in+parents+and+mimeType+contains+'image/'+and+trashed=false&fields=files(id,name,thumbnailLink)&key=${GOOGLE_API_KEY}`
+                    );
+                    const imgData = await imgRes.json();
+                    const imgFiles: DriveItem[] = imgData.files || [];
 
-              const thumb1Url = t1?.thumbnailLink ? t1.thumbnailLink.replace(/=s\d+/, '=s1000') : item.thumbnailLink?.replace(/=s\d+/, '=s1000');
-              const thumb2Url = t2?.thumbnailLink ? t2.thumbnailLink.replace(/=s\d+/, '=s1400') : thumb1Url;
+                    const t1 = imgFiles.find((f) => f.name.toLowerCase().includes('thumbnail1'));
+                    const t2 = imgFiles.find((f) => f.name.toLowerCase().includes('thumbnail2'));
 
-              const animeObj: AnimeItem = {
-                id: item.id,
-                name: item.name,
-                zoneId: z.id,
-                zoneName: z.name,
-                thumbnail1: thumb1Url,
-                thumbnail2: thumb2Url,
-              };
+                    const thumb1Url = t1?.thumbnailLink ? t1.thumbnailLink.replace(/=s\d+/, '=s1000') : item.thumbnailLink?.replace(/=s\d+/, '=s1000');
+                    const thumb2Url = t2?.thumbnailLink ? t2.thumbnailLink.replace(/=s\d+/, '=s1400') : thumb1Url;
 
-              animeList.push(animeObj);
-              accumulatedAnimes.push(animeObj);
+                    return {
+                      id: item.id,
+                      name: item.name,
+                      zoneId: z.id,
+                      zoneName: z.name,
+                      thumbnail1: thumb1Url,
+                      thumbnail2: thumb2Url,
+                    };
+                  } catch {
+                    return {
+                      id: item.id,
+                      name: item.name,
+                      zoneId: z.id,
+                      zoneName: z.name,
+                      thumbnail1: item.thumbnailLink?.replace(/=s\d+/, '=s1000'),
+                      thumbnail2: item.thumbnailLink?.replace(/=s\d+/, '=s1400'),
+                    };
+                  }
+                })
+              );
+
+              return { id: z.id, name: z.name, animes: animeList };
+            } catch {
+              return { id: z.id, name: z.name, animes: [] };
             }
-          }
+          })
+        );
 
-          if (animeList.length > 0) {
-            loadedZones.push({ id: z.id, name: z.name, animes: animeList });
-          }
+        const validZones = zoneResults.filter((z) => z.animes.length > 0);
+        const accumulated = validZones.flatMap((z) => z.animes);
+
+        if (isMounted) {
+          setZones(validZones);
+          setAllAnimes(accumulated);
+          sessionStorage.setItem('animetoon_catalog_cache', JSON.stringify({ zones: validZones, allAnimes: accumulated }));
         }
-
-        setZones(loadedZones);
-        setAllAnimes(accumulatedAnimes);
       } catch (err: any) {
-        setError(err.message || 'Failed to connect to Google Drive.');
+        if (isMounted) setError(err.message || 'Failed to connect to Google Drive.');
       } finally {
-        setLoading(false);
+        if (isMounted) setInitialLoading(false);
       }
     }
 
-    fetchCatalog();
+    loadCatalog();
+
+    return () => {
+      isMounted = false;
+    };
   }, []);
 
-  // 3. Auto-swipe Hero Banner every 8 seconds
+  // 4. Auto-swipe Hero Banner every 8 seconds
   const heroAnimes = allAnimes.slice(0, 6);
   useEffect(() => {
     if (heroAnimes.length <= 1) return;
@@ -243,9 +316,18 @@ export default function Home() {
     }
   };
 
+  // 5. Open Anime Details with Cache
   const openAnimeDetails = async (anime: AnimeItem) => {
-    pushNavStep('detail');
+    pushStep('detail');
     setSelectedAnime(anime);
+    setShowSeasonsPage(false);
+
+    if (seasonsCache.current[anime.id]) {
+      setSeasons(seasonsCache.current[anime.id]);
+      setSelectedSeasonIndex(0);
+      return;
+    }
+
     setLoadingDetails(true);
     try {
       const res = await fetch(
@@ -257,23 +339,26 @@ export default function Home() {
       const seasonFolders = files.filter((f) => f.mimeType === 'application/vnd.google-apps.folder');
       const directVideos = files.filter((f) => (f.mimeType && f.mimeType.includes('video')) || f.name.match(/\.(mp4|mkv|webm|avi)$/i));
 
-      const loadedSeasons: SeasonItem[] = [];
+      let loadedSeasons: SeasonItem[] = [];
 
       if (seasonFolders.length > 0) {
-        for (const s of seasonFolders) {
-          const epRes = await fetch(
-            `https://www.googleapis.com/drive/v3/files?q='${s.id}'+in+parents+and+trashed=false&fields=files(id,name,mimeType,thumbnailLink)&orderBy=name&key=${GOOGLE_API_KEY}`
-          );
-          const epData = await epRes.json();
-          const epFiles: DriveItem[] = (epData.files || []).filter(
-            (f: DriveItem) => (f.mimeType && f.mimeType.includes('video')) || f.name.match(/\.(mp4|mkv|webm|avi)$/i)
-          );
-          loadedSeasons.push({ id: s.id, name: s.name, episodes: epFiles });
-        }
+        loadedSeasons = await Promise.all(
+          seasonFolders.map(async (s) => {
+            const epRes = await fetch(
+              `https://www.googleapis.com/drive/v3/files?q='${s.id}'+in+parents+and+trashed=false&fields=files(id,name,mimeType,thumbnailLink)&orderBy=name&key=${GOOGLE_API_KEY}`
+            );
+            const epData = await epRes.json();
+            const epFiles: DriveItem[] = (epData.files || []).filter(
+              (f: DriveItem) => (f.mimeType && f.mimeType.includes('video')) || f.name.match(/\.(mp4|mkv|webm|avi)$/i)
+            );
+            return { id: s.id, name: s.name, episodes: epFiles };
+          })
+        );
       } else if (directVideos.length > 0) {
-        loadedSeasons.push({ id: anime.id, name: 'Season 1', episodes: directVideos });
+        loadedSeasons = [{ id: anime.id, name: 'Season 1', episodes: directVideos }];
       }
 
+      seasonsCache.current[anime.id] = loadedSeasons;
       setSeasons(loadedSeasons);
       setSelectedSeasonIndex(0);
     } catch (err: any) {
@@ -357,8 +442,8 @@ export default function Home() {
 
   return (
     <main style={styles.main}>
-      {/* ────────────────── CENTER SCREEN LOADER ────────────────── */}
-      {loading && (
+      {/* Center Screen Loader */}
+      {initialLoading && (
         <div style={styles.centerLoaderBox}>
           <div style={styles.loadingSpinner} />
           <p style={styles.loadingText}>Loading Anime Library...</p>
@@ -366,12 +451,11 @@ export default function Home() {
       )}
 
       {/* ────────────────── 1. MAIN TABS ────────────────── */}
-      {!loading && !selectedAnime && !viewAllZone && !selectedListCategory && (
+      {!initialLoading && !selectedAnime && !viewAllZone && !selectedListCategory && (
         <div style={{ paddingBottom: '85px' }}>
           {/* TAB 1: HOME PAGE */}
           {currentTab === 'home' && (
             <>
-              {/* 100% Pure Transparent Header */}
               <header style={styles.pureTransparentHeader}>
                 <div style={styles.homeLogo}>
                   <svg width="34" height="34" viewBox="0 0 100 100" fill="none" style={styles.logoShadow}>
@@ -390,7 +474,6 @@ export default function Home() {
                 </div>
               </header>
 
-              {/* Swipeable 8s Auto-Carousel Hero Banner */}
               {currentHero && (
                 <section
                   onTouchStart={handleHeroTouchStart}
@@ -421,18 +504,17 @@ export default function Home() {
                       <button
                         style={styles.bookmarkBtn}
                         onClick={() => {
-                          pushNavStep('modal');
+                          pushStep('modal');
                           setSelectedAnime(currentHero);
                           setShowListModal(true);
                         }}
                       >
-                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#f47521" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                        <svg width="20" height="20" viewBox="0 0 24 24" fill={savedUserLists[currentHero.id] ? '#f47521' : 'none'} stroke="#f47521" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
                           <path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z" />
                         </svg>
                       </button>
                     </div>
 
-                    {/* Carousel Dots */}
                     <div style={styles.carouselIndicators}>
                       {heroAnimes.map((_, i) => (
                         <span
@@ -460,7 +542,7 @@ export default function Home() {
                       <button
                         style={styles.viewAllBtn}
                         onClick={() => {
-                          pushNavStep('viewall');
+                          pushStep('viewall');
                           setViewAllZone(zone);
                         }}
                       >
@@ -517,7 +599,7 @@ export default function Home() {
                       key={cat.key}
                       style={styles.myListCategoryCard}
                       onClick={() => {
-                        pushNavStep('category');
+                        pushStep('category');
                         setSelectedListCategory(cat.key);
                       }}
                     >
@@ -578,7 +660,7 @@ export default function Home() {
       {viewAllZone && !selectedAnime && (
         <div style={styles.viewAllPage}>
           <header style={styles.subPageHeader}>
-            <button style={styles.subPageBackBtn} onClick={() => window.history.back()}>
+            <button style={styles.subPageBackBtn} onClick={goBackStep}>
               ←
             </button>
             <h2 style={styles.subPageTitle}>{viewAllZone.name}</h2>
@@ -617,7 +699,7 @@ export default function Home() {
       {selectedListCategory && !selectedAnime && (
         <div style={styles.viewAllPage}>
           <header style={styles.subPageHeader}>
-            <button style={styles.subPageBackBtn} onClick={() => window.history.back()}>
+            <button style={styles.subPageBackBtn} onClick={goBackStep}>
               ←
             </button>
             <h2 style={styles.subPageTitle}>
@@ -658,8 +740,8 @@ export default function Home() {
         </div>
       )}
 
-      {/* ────────────────── 4. CLEAN ANIME DETAIL SCREEN ────────────────── */}
-      {selectedAnime && (
+      {/* ────────────────── 4. ANIME DETAIL SCREEN ────────────────── */}
+      {selectedAnime && !showSeasonsPage && (
         <div style={styles.detailPage}>
           <div
             style={{
@@ -668,7 +750,7 @@ export default function Home() {
             }}
           >
             <div style={styles.detailTopBar}>
-              <button style={styles.roundBackBtn} onClick={() => window.history.back()}>
+              <button style={styles.roundBackBtn} onClick={goBackStep}>
                 ✕
               </button>
               <div style={styles.headerIcons}>
@@ -691,12 +773,11 @@ export default function Home() {
               <span>Average: <b>4.8</b> (450K) ▾</span>
             </div>
 
-            {/* Clean Single Action: My List */}
             <div style={styles.detailActionButtons}>
               <div
                 style={styles.actionBtn}
                 onClick={() => {
-                  pushNavStep('modal');
+                  pushStep('modal');
                   setShowListModal(true);
                 }}
               >
@@ -716,25 +797,26 @@ export default function Home() {
             </p>
             <span style={styles.moreDetailsText}>More Details</span>
 
-            {/* Clean Tab Bar */}
             <div style={styles.tabsRow}>
               <span style={styles.tabActive}>Episodes</span>
             </div>
 
-            {/* Season Selector */}
+            {/* Season Selector Bar */}
             {seasons.length > 0 && (
-              <div style={styles.seasonSelectorRow}>
-                <select
-                  value={selectedSeasonIndex}
-                  onChange={(e) => setSelectedSeasonIndex(Number(e.target.value))}
-                  style={styles.seasonSelectDropdown}
-                >
-                  {seasons.map((s, idx) => (
-                    <option key={s.id} value={idx}>
-                      ▾ {s.name.toUpperCase()}
-                    </option>
-                  ))}
-                </select>
+              <div
+                style={styles.seasonBarWrapper}
+                onClick={() => {
+                  pushStep('seasons_page');
+                  setShowSeasonsPage(true);
+                }}
+              >
+                <div style={styles.seasonBarTitleRow}>
+                  <span style={styles.seasonDropdownArrow}>▾</span>
+                  <span style={styles.seasonBarTitle}>
+                    {seasons[selectedSeasonIndex]?.name.toUpperCase() || 'SEASON 1'}
+                  </span>
+                </div>
+                <span style={styles.seasonBarMenuDots}>⋮</span>
               </div>
             )}
 
@@ -744,7 +826,6 @@ export default function Home() {
               </div>
             )}
 
-            {/* Clean Episode List (No Premium Badge & No Download Icons) */}
             <div style={styles.episodeList}>
               {seasons[selectedSeasonIndex]?.episodes.map((ep, idx) => {
                 const epTitle = ep.name.replace(/\.[^/.]+$/, '');
@@ -757,7 +838,7 @@ export default function Home() {
                     key={ep.id}
                     style={styles.episodeCard}
                     onClick={() => {
-                      pushNavStep('player');
+                      pushStep('player');
                       setActiveEpisode({ title: epTitle, id: ep.id });
                       setIsPlaying(true);
                     }}
@@ -778,7 +859,6 @@ export default function Home() {
             </div>
           </div>
 
-          {/* Sticky Bottom Watch Button */}
           {seasons.length > 0 && seasons[0].episodes.length > 0 && (
             <div style={styles.stickyBottomBar}>
               <button
@@ -786,7 +866,7 @@ export default function Home() {
                 onClick={() => {
                   const ep = seasons[selectedSeasonIndex]?.episodes[0];
                   if (ep) {
-                    pushNavStep('player');
+                    pushStep('player');
                     setActiveEpisode({ title: ep.name.replace(/\.[^/.]+$/, ''), id: ep.id });
                   }
                 }}
@@ -796,7 +876,7 @@ export default function Home() {
               <button
                 style={styles.stickyBookmarkBtn}
                 onClick={() => {
-                  pushNavStep('modal');
+                  pushStep('modal');
                   setShowListModal(true);
                 }}
               >
@@ -809,13 +889,54 @@ export default function Home() {
         </div>
       )}
 
-      {/* ────────────────── 5. ADD TO MY LIST MODAL ────────────────── */}
+      {/* ────────────────── 5. SEASONS FULL PAGE VIEW ────────────────── */}
+      {selectedAnime && showSeasonsPage && (
+        <div style={styles.seasonsFullPage}>
+          <header style={styles.seasonsPageHeader}>
+            <button style={styles.seasonsPageCloseBtn} onClick={goBackStep}>
+              ✕
+            </button>
+            <h2 style={styles.seasonsPageHeaderTitle}>Seasons</h2>
+          </header>
+
+          <div style={styles.seasonsItemList}>
+            {seasons.map((s, idx) => {
+              const isCurrent = idx === selectedSeasonIndex;
+              return (
+                <div
+                  key={s.id}
+                  style={styles.seasonItemRow}
+                  onClick={() => {
+                    setSelectedSeasonIndex(idx);
+                    goBackStep();
+                  }}
+                >
+                  <span
+                    style={{
+                      ...styles.seasonItemName,
+                      color: isCurrent ? '#f47521' : '#ffffff',
+                      fontWeight: isCurrent ? 700 : 500,
+                    }}
+                  >
+                    {s.name}
+                  </span>
+                  <span style={styles.seasonItemCount}>
+                    {s.episodes.length} Episodes
+                  </span>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
+      {/* ────────────────── 6. ADD / REMOVE MY LIST MODAL ────────────────── */}
       {showListModal && selectedAnime && (
-        <div style={styles.modalOverlay} onClick={() => window.history.back()}>
+        <div style={styles.modalOverlay} onClick={goBackStep}>
           <div style={styles.listModalContent} onClick={(e) => e.stopPropagation()}>
             <div style={styles.listModalHeader}>
               <h3 style={styles.listModalTitle}>Save to My Lists</h3>
-              <button style={styles.closeBtnText} onClick={() => window.history.back()}>
+              <button style={styles.closeBtnText} onClick={goBackStep}>
                 ✕
               </button>
             </div>
@@ -830,7 +951,7 @@ export default function Home() {
                       backgroundColor: isSelected ? 'rgba(244, 117, 33, 0.15)' : '#1a1a1a',
                       borderColor: isSelected ? '#f47521' : '#282828',
                     }}
-                    onClick={() => saveAnimeToList(selectedAnime, cat.key)}
+                    onClick={() => toggleAnimeListCategory(selectedAnime, cat.key)}
                   >
                     <span style={{ fontWeight: isSelected ? 700 : 500, color: isSelected ? '#f47521' : '#ffffff' }}>
                       {cat.label}
@@ -839,12 +960,22 @@ export default function Home() {
                   </div>
                 );
               })}
+
+              {/* Explicit Remove Action */}
+              {savedUserLists[selectedAnime.id] && (
+                <button
+                  style={styles.removeListBtn}
+                  onClick={() => removeAnimeFromListExplicitly(selectedAnime.id)}
+                >
+                  🗑️ Remove from My Lists
+                </button>
+              )}
             </div>
           </div>
         </div>
       )}
 
-      {/* ────────────────── 6. FULLSCREEN VIDEO PLAYER ────────────────── */}
+      {/* ────────────────── 7. FULLSCREEN VIDEO PLAYER ────────────────── */}
       {activeEpisode && (
         <div style={styles.playerBackdrop}>
           <div
@@ -886,7 +1017,7 @@ export default function Home() {
             {showControls && (
               <div style={styles.playerControls}>
                 <div style={styles.playerTopBar}>
-                  <button style={styles.closePlayerBtn} onClick={() => window.history.back()}>
+                  <button style={styles.closePlayerBtn} onClick={goBackStep}>
                     ✕
                   </button>
                   <div style={styles.playerVideoTitle}>{activeEpisode.title}</div>
@@ -946,10 +1077,9 @@ export default function Home() {
         </div>
       )}
 
-      {/* ────────────────── 7. IMAGE 2 MATCHING BOTTOM NAVIGATION BAR ────────────────── */}
+      {/* ────────────────── 8. BOTTOM NAVIGATION BAR ────────────────── */}
       {!selectedAnime && !activeEpisode && (
         <nav style={styles.bottomNav}>
-          {/* Home Icon */}
           <div
             style={{
               ...styles.navItem,
@@ -968,7 +1098,6 @@ export default function Home() {
             <span>Home</span>
           </div>
 
-          {/* My Lists Icon */}
           <div
             style={{
               ...styles.navItem,
@@ -986,7 +1115,6 @@ export default function Home() {
             <span>My Lists</span>
           </div>
 
-          {/* Browse Icon */}
           <div
             style={{
               ...styles.navItem,
@@ -1012,15 +1140,15 @@ export default function Home() {
   );
 }
 
-// ────────────────── PIXEL-PERFECT STYLING ──────────────────
+// ────────────────── PURE OLED BLACK STYLING ──────────────────
 const styles: { [key: string]: React.CSSProperties } = {
   main: {
     backgroundColor: '#000000',
     color: '#ffffff',
     minHeight: '100vh',
     fontFamily: 'system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif',
+    paddingTop: 'env(safe-area-inset-top, 0px)',
   },
-  // Center Screen Loader
   centerLoaderBox: {
     display: 'flex',
     flexDirection: 'column',
@@ -1042,7 +1170,6 @@ const styles: { [key: string]: React.CSSProperties } = {
     color: '#aaaaaa',
     fontWeight: 600,
   },
-  // Header
   pureTransparentHeader: {
     position: 'absolute',
     top: 0,
@@ -1318,7 +1445,6 @@ const styles: { [key: string]: React.CSSProperties } = {
     fontWeight: 800,
     margin: 0,
   },
-  // Bottom Navigation
   bottomNav: {
     position: 'fixed',
     bottom: 0,
@@ -1386,6 +1512,17 @@ const styles: { [key: string]: React.CSSProperties } = {
     display: 'flex',
     justifyContent: 'space-between',
     alignItems: 'center',
+    cursor: 'pointer',
+  },
+  removeListBtn: {
+    marginTop: '6px',
+    padding: '14px',
+    borderRadius: '8px',
+    backgroundColor: 'rgba(255, 59, 48, 0.1)',
+    border: '1px solid rgba(255, 59, 48, 0.3)',
+    color: '#ff3b30',
+    fontSize: '0.9rem',
+    fontWeight: 700,
     cursor: 'pointer',
   },
   detailPage: {
@@ -1473,7 +1610,6 @@ const styles: { [key: string]: React.CSSProperties } = {
   },
   tabsRow: {
     display: 'flex',
-    gap: '24px',
     borderBottom: '1px solid #1a1a1a',
     marginTop: '20px',
     marginBottom: '14px',
@@ -1485,20 +1621,82 @@ const styles: { [key: string]: React.CSSProperties } = {
     borderBottom: '3px solid #f47521',
     paddingBottom: '8px',
   },
-  seasonSelectorRow: {
+  seasonBarWrapper: {
     display: 'flex',
     justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: '16px',
-  },
-  seasonSelectDropdown: {
-    backgroundColor: 'transparent',
-    color: '#ffffff',
-    border: 'none',
-    fontSize: '0.95rem',
-    fontWeight: 800,
-    outline: 'none',
+    padding: '14px 0',
+    borderBottom: '1px solid #141414',
+    marginBottom: '14px',
     cursor: 'pointer',
+  },
+  seasonBarTitleRow: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: '8px',
+  },
+  seasonDropdownArrow: {
+    fontSize: '1rem',
+    color: '#ffffff',
+  },
+  seasonBarTitle: {
+    fontSize: '1.05rem',
+    fontWeight: 900,
+    color: '#ffffff',
+    letterSpacing: '0.5px',
+  },
+  seasonBarMenuDots: {
+    fontSize: '1.2rem',
+    color: '#888888',
+  },
+  seasonsFullPage: {
+    position: 'fixed',
+    inset: 0,
+    backgroundColor: '#000000',
+    zIndex: 200,
+    display: 'flex',
+    flexDirection: 'column',
+    padding: '18px 20px',
+    overflowY: 'auto',
+  },
+  seasonsPageHeader: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: '24px',
+    marginBottom: '28px',
+  },
+  seasonsPageCloseBtn: {
+    background: 'none',
+    border: 'none',
+    color: '#ffffff',
+    fontSize: '1.6rem',
+    cursor: 'pointer',
+    lineHeight: 1,
+  },
+  seasonsPageHeaderTitle: {
+    fontSize: '1.25rem',
+    fontWeight: 800,
+    margin: 0,
+  },
+  seasonsItemList: {
+    display: 'flex',
+    flexDirection: 'column',
+    gap: '24px',
+  },
+  seasonItemRow: {
+    display: 'flex',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    cursor: 'pointer',
+    padding: '4px 0',
+  },
+  seasonItemName: {
+    fontSize: '1rem',
+    letterSpacing: '0.2px',
+  },
+  seasonItemCount: {
+    fontSize: '0.85rem',
+    color: '#777777',
   },
   episodeList: {
     display: 'flex',
