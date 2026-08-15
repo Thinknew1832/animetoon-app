@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 
 interface DriveFile {
   id: string;
@@ -21,6 +21,10 @@ export default function Home() {
   const [error, setError] = useState('');
   const [activeVideo, setActiveVideo] = useState<{ title: string; id: string } | null>(null);
 
+  const artContainerRef = useRef<HTMLDivElement | null>(null);
+  const artInstanceRef = useRef<any>(null);
+
+  // Fetch episodes from Google Drive API
   useEffect(() => {
     async function fetchDriveVideos() {
       try {
@@ -52,6 +56,97 @@ export default function Home() {
     fetchDriveVideos();
   }, []);
 
+  // Initialize In-Browser Engine (ArtPlayer with Multi-Audio Demuxing)
+  useEffect(() => {
+    if (!activeVideo || !artContainerRef.current) return;
+
+    let isMounted = true;
+
+    // Load ArtPlayer dynamically via CDN
+    const script = document.createElement('script');
+    script.src = 'https://cdn.jsdelivr.net/npm/artplayer/dist/artplayer.js';
+    script.async = true;
+
+    script.onload = () => {
+      if (!isMounted || !(window as any).Artplayer || !artContainerRef.current) return;
+
+      if (artInstanceRef.current && typeof artInstanceRef.current.destroy === 'function') {
+        artInstanceRef.current.destroy(false);
+      }
+
+      const streamUrl = `${PROXY_BASE}/?id=${activeVideo.id}`;
+
+      const art = new (window as any).Artplayer({
+        container: artContainerRef.current,
+        url: streamUrl,
+        title: activeVideo.title,
+        autoplay: true,
+        autoSize: true,
+        playbackRate: true,
+        aspectRatio: true,
+        setting: true,
+        pip: true,
+        fullscreen: true,
+        fullscreenWeb: true,
+        theme: '#f47521',
+        controls: [
+          {
+            name: 'audio-selector',
+            position: 'right',
+            html: '🎧 Audio',
+            tooltip: 'Switch Audio Track',
+            selector: [
+              { default: true, html: 'Track 1 (Main / Jap)', value: 0 },
+              { html: 'Track 2 (Dub / Eng)', value: 1 },
+              { html: 'Track 3 (Alt Audio)', value: 2 },
+            ],
+            onSelect: function (item: any) {
+              const videoElement = art.video as any;
+              if (videoElement.audioTracks && videoElement.audioTracks.length > 0) {
+                for (let i = 0; i < videoElement.audioTracks.length; i++) {
+                  videoElement.audioTracks[i].enabled = (i === item.value);
+                }
+              }
+              return item.html;
+            },
+          },
+        ],
+      });
+
+      // Scan available tracks when stream metadata resolves
+      art.on('video:loadedmetadata', () => {
+        const videoElement = art.video as any;
+        if (videoElement.audioTracks && videoElement.audioTracks.length > 1) {
+          const trackList = [];
+          for (let i = 0; i < videoElement.audioTracks.length; i++) {
+            const trk = videoElement.audioTracks[i];
+            trackList.push({
+              default: i === 0,
+              html: trk.label || `Track ${i + 1} (${trk.language || 'Multi'})`,
+              value: i,
+            });
+          }
+          // Update control panel dynamically
+          art.controls.update({
+            name: 'audio-selector',
+            selector: trackList,
+          });
+        }
+      });
+
+      artInstanceRef.current = art;
+    };
+
+    document.body.appendChild(script);
+
+    return () => {
+      isMounted = false;
+      if (artInstanceRef.current && typeof artInstanceRef.current.destroy === 'function') {
+        artInstanceRef.current.destroy(false);
+      }
+    };
+  }, [activeVideo]);
+
   const handleSearch = (query: string) => {
     setSearchQuery(query);
     if (!query.trim()) {
@@ -67,7 +162,7 @@ export default function Home() {
 
   return (
     <main style={styles.main}>
-      {/* Top Header */}
+      {/* Top Navbar */}
       <header style={styles.header}>
         <div style={styles.logo} onClick={() => window.scrollTo({ top: 0, behavior: 'smooth' })}>
           <span style={styles.playIcon}>▶</span> ANIMETOON
@@ -88,7 +183,7 @@ export default function Home() {
         <div style={styles.heroContent}>
           <h1 style={styles.heroTitle}>AnimeToon Stream</h1>
           <p style={styles.heroDesc}>
-            Instant high-definition streaming directly from your cloud archive.
+            Dual & multi-audio high-definition streaming directly from your cloud library.
           </p>
           {episodes.length > 0 && (
             <button
@@ -106,7 +201,7 @@ export default function Home() {
         </div>
       </section>
 
-      {/* Episode Header */}
+      {/* Section Header */}
       <div style={styles.sectionHeader}>
         <span style={styles.sectionBar}></span>
         <h2 style={styles.sectionTitle}>Episodes</h2>
@@ -118,7 +213,7 @@ export default function Home() {
         <p style={styles.statusText}>No video files found in this folder.</p>
       )}
 
-      {/* Video Grid */}
+      {/* Episode Grid */}
       <div style={styles.grid}>
         {filteredEpisodes.map((file) => {
           const titleClean = file.name.replace(/\.[^/.]+$/, '');
@@ -151,7 +246,7 @@ export default function Home() {
                   {titleClean}
                 </div>
                 <div style={styles.cardMeta}>
-                  <span>Full HD</span>
+                  <span>Multi-Audio</span>
                   <span style={{ color: '#f47521', fontWeight: 600 }}>Stream</span>
                 </div>
               </div>
@@ -160,26 +255,14 @@ export default function Home() {
         })}
       </div>
 
-      {/* Native Stream Player Modal */}
+      {/* ArtPlayer Modal */}
       {activeVideo && (
         <div style={styles.modalBackdrop}>
           <div style={styles.modalWrapper}>
             <button style={styles.closeBtn} onClick={() => setActiveVideo(null)}>
               ✕
             </button>
-            <div style={styles.playerContainer}>
-              <video
-                key={activeVideo.id}
-                src={`${PROXY_BASE}/?id=${activeVideo.id}`}
-                controls
-                autoPlay
-                playsInline
-                preload="auto"
-                style={styles.videoElement}
-              >
-                Your browser does not support playing this video format.
-              </video>
-            </div>
+            <div style={styles.playerContainer} ref={artContainerRef}></div>
             <div style={styles.nowPlayingText}>
               Playing: <span style={{ color: '#fff' }}>{activeVideo.title}</span>
             </div>
@@ -190,7 +273,7 @@ export default function Home() {
   );
 }
 
-// Crunchyroll-Style Dark & Orange Theme
+// Styling (Crunchyroll Dark & Orange Theme)
 const styles: { [key: string]: React.CSSProperties } = {
   main: {
     backgroundColor: '#000000',
@@ -380,16 +463,6 @@ const styles: { [key: string]: React.CSSProperties } = {
     borderRadius: '8px',
     overflow: 'hidden',
     border: '1px solid #222222',
-    display: 'flex',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  videoElement: {
-    width: '100%',
-    height: '100%',
-    objectFit: 'contain',
-    display: 'block',
-    outline: 'none',
   },
   closeBtn: {
     position: 'absolute',
