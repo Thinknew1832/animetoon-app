@@ -22,7 +22,6 @@ interface ZoneGroup {
   id: string;
   name: string;
   animes: AnimeItem[];
-  expanded?: boolean;
 }
 
 interface SeasonItem {
@@ -31,19 +30,38 @@ interface SeasonItem {
   episodes: DriveItem[];
 }
 
+type TabType = 'home' | 'mylists' | 'browse';
+
+const LIST_CATEGORIES = [
+  { key: 'plan', label: '1. Plan to watch' },
+  { key: 'watching', label: '2. Watching' },
+  { key: 'onhold', label: '3. On hold' },
+  { key: 'dropped', label: '4. Dropped' },
+  { key: 'completed', label: '5. Completed' },
+];
+
 export default function Home() {
   const GOOGLE_API_KEY = "AIzaSyCwhYhosnTrfHyi6N1C0N8AJl4gT85xg9w";
   const ROOT_FOLDER_ID = "1qJu2_VmnxluIFlgARfX-G606W-tCDAlG";
   const PROXY_BASE = "https://animetoon-proxy.thinkingnew.workers.dev";
 
+  // Navigation State
+  const [currentTab, setCurrentTab] = useState<TabType>('home');
+  const [viewAllZone, setViewAllZone] = useState<ZoneGroup | null>(null);
+  const [selectedListCategory, setSelectedListCategory] = useState<string | null>(null);
+
   // Data states
   const [zones, setZones] = useState<ZoneGroup[]>([]);
+  const [allAnimes, setAllAnimes] = useState<AnimeItem[]>([]);
   const [featuredAnime, setFeaturedAnime] = useState<AnimeItem | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
-  const [searchQuery, setSearchQuery] = useState('');
 
-  // Navigation / Page views
+  // My Lists Storage: { [animeId]: { categoryKey, anime, date } }
+  const [savedUserLists, setSavedUserLists] = useState<{ [key: string]: { categoryKey: string; anime: AnimeItem; date: string } }>({});
+  const [showListModal, setShowListModal] = useState(false);
+
+  // Details & Player navigation
   const [selectedAnime, setSelectedAnime] = useState<AnimeItem | null>(null);
   const [seasons, setSeasons] = useState<SeasonItem[]>([]);
   const [selectedSeasonIndex, setSelectedSeasonIndex] = useState(0);
@@ -67,12 +85,39 @@ export default function Home() {
   const touchStartX = useRef<number>(0);
   const startLevel = useRef<number>(0);
 
-  // 1. Fetch Main Zones and Anime Cards
+  // Load Saved User Lists from localStorage
+  useEffect(() => {
+    try {
+      const stored = localStorage.getItem('animetoon_user_lists');
+      if (stored) {
+        setSavedUserLists(JSON.parse(stored));
+      }
+    } catch (e) {
+      console.error(e);
+    }
+  }, []);
+
+  // Save to localStorage
+  const saveAnimeToList = (anime: AnimeItem, categoryKey: string) => {
+    const today = new Date().toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+    const updated = {
+      ...savedUserLists,
+      [anime.id]: {
+        categoryKey,
+        anime,
+        date: today,
+      },
+    };
+    setSavedUserLists(updated);
+    localStorage.setItem('animetoon_user_lists', JSON.stringify(updated));
+    setShowListModal(false);
+  };
+
+  // 1. Fetch Zones and Catalog
   useEffect(() => {
     async function fetchCatalog() {
       try {
         setLoading(true);
-        // 1. Get Zone folders
         const res = await fetch(
           `https://www.googleapis.com/drive/v3/files?q='${ROOT_FOLDER_ID}'+in+parents+and+mimeType='application/vnd.google-apps.folder'+and+trashed=false&fields=files(id,name)&orderBy=name&key=${GOOGLE_API_KEY}`
         );
@@ -81,8 +126,8 @@ export default function Home() {
 
         const zoneFolders: DriveItem[] = zoneData.files || [];
         const loadedZones: ZoneGroup[] = [];
+        const accumulatedAnimes: AnimeItem[] = [];
 
-        // 2. For each zone, fetch anime subfolders
         for (const z of zoneFolders) {
           const animeRes = await fetch(
             `https://www.googleapis.com/drive/v3/files?q='${z.id}'+in+parents+and+trashed=false&fields=files(id,name,mimeType,thumbnailLink)&key=${GOOGLE_API_KEY}`
@@ -94,7 +139,6 @@ export default function Home() {
 
           for (const item of files) {
             if (item.mimeType === 'application/vnd.google-apps.folder') {
-              // Fetch images inside this anime folder (thumbnail1 / thumbnail2)
               const imgRes = await fetch(
                 `https://www.googleapis.com/drive/v3/files?q='${item.id}'+in+parents+and+mimeType+contains+'image/'+and+trashed=false&fields=files(id,name,thumbnailLink)&key=${GOOGLE_API_KEY}`
               );
@@ -104,14 +148,24 @@ export default function Home() {
               const t1 = imgFiles.find((f) => f.name.toLowerCase().includes('thumbnail1'));
               const t2 = imgFiles.find((f) => f.name.toLowerCase().includes('thumbnail2'));
 
-              animeList.push({
+              const thumb1Url = t1?.thumbnailLink
+                ? t1.thumbnailLink.replace(/=s\d+/, '=s1000')
+                : item.thumbnailLink?.replace(/=s\d+/, '=s1000');
+              const thumb2Url = t2?.thumbnailLink
+                ? t2.thumbnailLink.replace(/=s\d+/, '=s1400')
+                : thumb1Url;
+
+              const animeObj: AnimeItem = {
                 id: item.id,
                 name: item.name,
                 zoneId: z.id,
                 zoneName: z.name,
-                thumbnail1: t1 ? t1.thumbnailLink?.replace('=s220', '=s800') : item.thumbnailLink?.replace('=s220', '=s800'),
-                thumbnail2: t2 ? t2.thumbnailLink?.replace('=s220', '=s1200') : t1 ? t1.thumbnailLink?.replace('=s220', '=s1200') : 'https://images.unsplash.com/photo-1578632767115-351597cf2477?w=1200',
-              });
+                thumbnail1: thumb1Url,
+                thumbnail2: thumb2Url,
+              };
+
+              animeList.push(animeObj);
+              accumulatedAnimes.push(animeObj);
             }
           }
 
@@ -120,12 +174,12 @@ export default function Home() {
               id: z.id,
               name: z.name,
               animes: animeList,
-              expanded: false,
             });
           }
         }
 
         setZones(loadedZones);
+        setAllAnimes(accumulatedAnimes);
         if (loadedZones.length > 0 && loadedZones[0].animes.length > 0) {
           setFeaturedAnime(loadedZones[0].animes[0]);
         }
@@ -139,7 +193,7 @@ export default function Home() {
     fetchCatalog();
   }, []);
 
-  // 2. Fetch Seasons & Episodes when Anime is clicked
+  // 2. Fetch Seasons & Episodes on Anime Click
   const openAnimeDetails = async (anime: AnimeItem) => {
     setSelectedAnime(anime);
     setLoadingDetails(true);
@@ -151,7 +205,9 @@ export default function Home() {
       const files: DriveItem[] = data.files || [];
 
       const seasonFolders = files.filter((f) => f.mimeType === 'application/vnd.google-apps.folder');
-      const directVideos = files.filter((f) => (f.mimeType && f.mimeType.includes('video')) || f.name.match(/\.(mp4|mkv|webm|avi)$/i));
+      const directVideos = files.filter(
+        (f) => (f.mimeType && f.mimeType.includes('video')) || f.name.match(/\.(mp4|mkv|webm|avi)$/i)
+      );
 
       const loadedSeasons: SeasonItem[] = [];
 
@@ -187,13 +243,7 @@ export default function Home() {
     }
   };
 
-  const toggleZoneExpand = (zoneId: string) => {
-    setZones((prev) =>
-      prev.map((z) => (z.id === zoneId ? { ...z, expanded: !z.expanded } : z))
-    );
-  };
-
-  // Video Player Controls
+  // Video Controls
   const resetControlsTimer = () => {
     setShowControls(true);
     if (controlsTimer.current) clearTimeout(controlsTimer.current);
@@ -224,7 +274,7 @@ export default function Home() {
     return `-${formatTime(Math.max(0, dur - curr))}`;
   };
 
-  // Touch Swipe (Volume / Brightness)
+  // Swipe Gestures
   const handleTouchStart = (e: React.TouchEvent) => {
     if (e.touches.length !== 1) return;
     const touch = e.touches[0];
@@ -259,135 +309,294 @@ export default function Home() {
 
   const currentStreamUrl = activeEpisode ? `${PROXY_BASE}/?id=${activeEpisode.id}` : '';
 
+  // Get anime for a specific category in My Lists
+  const getAnimesInCategory = (categoryKey: string) => {
+    return Object.values(savedUserLists)
+      .filter((item) => item.categoryKey === categoryKey)
+      .map((item) => item.anime);
+  };
+
   return (
     <main style={styles.main}>
-      {/* ────────────────── SCREEN 1: HOME PAGE ────────────────── */}
-      {!selectedAnime && (
-        <div style={{ paddingBottom: '70px' }}>
-          {/* Top Bar */}
-          <header style={styles.homeHeader}>
-            <div style={styles.homeLogo}>
-              <span style={styles.crSpiral}>🌀</span> ANIMETOON
-            </div>
-            <div style={styles.headerIcons}>
-              <span style={styles.iconBtn}>📺</span>
-              <span style={styles.iconBtn}>🔍</span>
-            </div>
-          </header>
-
-          {/* Featured Hero Banner */}
-          {featuredAnime && (
-            <section
-              style={{
-                ...styles.heroBanner,
-                backgroundImage: `linear-gradient(to top, #000000 10%, rgba(0,0,0,0.5) 60%, transparent 100%), url('${featuredAnime.thumbnail2}')`,
-              }}
-            >
-              <div style={styles.heroContent}>
-                <h1 style={styles.heroTitle}>{featuredAnime.name}</h1>
-                <div style={styles.tagRow}>
-                  <span style={styles.ageBadge}>A</span>
-                  <span>• Dub | Sub • Action, Supernatural, Shonen</span>
+      {/* ────────────────── 1. MAIN SCREENS (HOME / MY LISTS / BROWSE) ────────────────── */}
+      {!selectedAnime && !viewAllZone && !selectedListCategory && (
+        <div style={{ paddingBottom: '80px' }}>
+          {/* TAB 1: HOME PAGE */}
+          {currentTab === 'home' && (
+            <>
+              <header style={styles.blendedHomeHeader}>
+                <div style={styles.homeLogo}>
+                  <div style={styles.crSpiralWrapper}>
+                    <div style={styles.crSpiralOuter}>
+                      <div style={styles.crSpiralInner} />
+                    </div>
+                  </div>
                 </div>
-                <p style={styles.heroDesc}>
-                  Stream every season and episode with high bitrate multi-audio cloud streaming.
-                </p>
-
-                <div style={styles.heroActionRow}>
-                  <button
-                    style={styles.heroWatchBtn}
-                    onClick={() => openAnimeDetails(featuredAnime)}
-                  >
-                    ▶ Start Watching E1
-                  </button>
-                  <button style={styles.bookmarkBtn}>🔖</button>
+                <div style={styles.headerIcons}>
+                  <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" style={{ cursor: 'pointer' }}>
+                    <circle cx="11" cy="11" r="8" />
+                    <line x1="21" y1="21" x2="16.65" y2="16.65" />
+                  </svg>
                 </div>
+              </header>
 
-                <div style={styles.carouselIndicators}>
-                  <span style={{ ...styles.dot, backgroundColor: '#f47521', width: '28px' }}></span>
-                  <span style={styles.dot}></span>
-                  <span style={styles.dot}></span>
-                  <span style={styles.dot}></span>
-                </div>
-              </div>
-            </section>
+              {featuredAnime && (
+                <section
+                  style={{
+                    ...styles.heroBanner,
+                    backgroundImage: `linear-gradient(to bottom, rgba(0,0,0,0.7) 0%, transparent 25%, transparent 55%, #000000 98%), url('${featuredAnime.thumbnail2 || featuredAnime.thumbnail1}')`,
+                  }}
+                >
+                  <div style={styles.heroContent}>
+                    <h1 style={styles.heroTitle}>{featuredAnime.name}</h1>
+                    <div style={styles.tagRow}>
+                      <span style={styles.ageBadge}>A</span>
+                      <span>• Dub | Sub • Action, Supernatural, Shonen</span>
+                    </div>
+                    <p style={styles.heroDesc}>
+                      Stream every season and episode with high bitrate multi-audio cloud streaming.
+                    </p>
+
+                    <div style={styles.heroActionRow}>
+                      <button
+                        style={styles.heroWatchBtn}
+                        onClick={() => openAnimeDetails(featuredAnime)}
+                      >
+                        ▶ Start Watching E1
+                      </button>
+                      <button
+                        style={styles.bookmarkBtn}
+                        onClick={() => {
+                          setSelectedAnime(featuredAnime);
+                          setShowListModal(true);
+                        }}
+                      >
+                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#f47521" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                          <path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z" />
+                        </svg>
+                      </button>
+                    </div>
+
+                    <div style={styles.carouselIndicators}>
+                      <span style={{ ...styles.dot, backgroundColor: '#f47521', width: '28px' }}></span>
+                      <span style={styles.dot}></span>
+                      <span style={styles.dot}></span>
+                      <span style={styles.dot}></span>
+                    </div>
+                  </div>
+                </section>
+              )}
+
+              {loading && <p style={styles.statusText}>Loading anime library...</p>}
+              {error && <p style={{ ...styles.statusText, color: '#ff5555' }}>{error}</p>}
+
+              {zones.map((zone) => (
+                <section key={zone.id} style={styles.zoneSection}>
+                  <div style={styles.zoneHeader}>
+                    <h3 style={styles.zoneTitle}>{zone.name}</h3>
+                    {zone.animes.length > 3 && (
+                      <button
+                        style={styles.viewAllBtn}
+                        onClick={() => setViewAllZone(zone)}
+                      >
+                        View All ➔
+                      </button>
+                    )}
+                  </div>
+
+                  <div style={styles.animeGrid}>
+                    {zone.animes.slice(0, 3).map((anime) => (
+                      <div
+                        key={anime.id}
+                        style={styles.animeCard}
+                        onClick={() => openAnimeDetails(anime)}
+                      >
+                        <div style={styles.posterContainer}>
+                          <img
+                            src={anime.thumbnail1 || 'https://images.unsplash.com/photo-1578632767115-351597cf2477?w=500'}
+                            alt={anime.name}
+                            style={styles.animePoster}
+                          />
+                        </div>
+                        <div style={styles.cardBottomMeta}>
+                          <div style={styles.animeCardTitle} title={anime.name}>
+                            {anime.name}
+                          </div>
+                          <div style={styles.cardSubTextRow}>
+                            <span style={styles.dubSubTag}>Dub | Sub</span>
+                            <span style={styles.menuDots}>⋮</span>
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </section>
+              ))}
+            </>
           )}
 
-          {loading && <p style={styles.statusText}>Loading anime zones...</p>}
-          {error && <p style={{ ...styles.statusText, color: '#ff5555' }}>{error}</p>}
+          {/* TAB 2: MY LISTS PAGE (Image 2 style) */}
+          {currentTab === 'mylists' && (
+            <div style={styles.myListsContainer}>
+              <header style={styles.pageTopBar}>
+                <h2 style={styles.pageTitle}>My Lists</h2>
+              </header>
 
-          {/* Zone Rows */}
-          {zones.map((zone) => {
-            const displayedAnime = zone.expanded ? zone.animes : zone.animes.slice(0, 3);
+              <div style={styles.myListsCardList}>
+                {LIST_CATEGORIES.map((cat) => {
+                  const itemsInCat = Object.values(savedUserLists).filter((i) => i.categoryKey === cat.key);
+                  const lastUpdated = itemsInCat.length > 0 ? itemsInCat[itemsInCat.length - 1].date : 'Never';
 
-            return (
-              <section key={zone.id} style={styles.zoneSection}>
-                <div style={styles.zoneHeader}>
-                  <h3 style={styles.zoneTitle}>{zone.name}</h3>
-                  {zone.animes.length > 3 && (
-                    <button
-                      style={styles.viewAllBtn}
-                      onClick={() => toggleZoneExpand(zone.id)}
-                    >
-                      {zone.expanded ? 'Show Less' : 'View All ➔'}
-                    </button>
-                  )}
-                </div>
-
-                <div style={styles.animeGrid}>
-                  {displayedAnime.map((anime) => (
+                  return (
                     <div
-                      key={anime.id}
-                      style={styles.animeCard}
-                      onClick={() => openAnimeDetails(anime)}
+                      key={cat.key}
+                      style={styles.myListCategoryCard}
+                      onClick={() => setSelectedListCategory(cat.key)}
                     >
+                      <div>
+                        <div style={styles.catCardTitle}>{cat.label}</div>
+                        <div style={styles.catCardSubtitle}>
+                          {itemsInCat.length} Items • Updated on {lastUpdated}
+                        </div>
+                      </div>
+                      <span style={styles.catCardMenu}>⋮</span>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+
+          {/* TAB 3: BROWSE ALL ANIME PAGE (Image 3 style) */}
+          {currentTab === 'browse' && (
+            <div style={styles.browseContainer}>
+              <header style={styles.pageTopBar}>
+                <h2 style={styles.pageTitle}>Browse All Anime</h2>
+                <span style={styles.browseCount}>({allAnimes.length} Titles)</span>
+              </header>
+
+              <div style={styles.animeGrid}>
+                {allAnimes.map((anime) => (
+                  <div
+                    key={anime.id}
+                    style={styles.animeCard}
+                    onClick={() => openAnimeDetails(anime)}
+                  >
+                    <div style={styles.posterContainer}>
                       <img
                         src={anime.thumbnail1 || 'https://images.unsplash.com/photo-1578632767115-351597cf2477?w=500'}
                         alt={anime.name}
                         style={styles.animePoster}
                       />
-                      <div style={styles.animeCardTitle}>{anime.name}</div>
                     </div>
-                  ))}
-                </div>
-              </section>
-            );
-          })}
-
-          {/* Bottom Crunchyroll Nav */}
-          <nav style={styles.bottomNav}>
-            <div style={{ ...styles.navItem, color: '#f47521' }}>
-              <span>🏠</span>
-              <span>Home</span>
+                    <div style={styles.cardBottomMeta}>
+                      <div style={styles.animeCardTitle} title={anime.name}>
+                        {anime.name}
+                      </div>
+                      <div style={styles.cardSubTextRow}>
+                        <span style={styles.dubSubTag}>Dub | Sub</span>
+                        <span style={styles.menuDots}>⋮</span>
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
             </div>
-            <div style={styles.navItem}>
-              <span>🔖</span>
-              <span>My Lists</span>
-            </div>
-            <div style={styles.navItem}>
-              <span>▦</span>
-              <span>Browse</span>
-            </div>
-            <div style={styles.navItem}>
-              <span>✨</span>
-              <span>Simulcasts</span>
-            </div>
-            <div style={styles.navItem}>
-              <span>👤</span>
-              <span>Account</span>
-            </div>
-          </nav>
+          )}
         </div>
       )}
 
-      {/* ────────────────── SCREEN 2 & 3: ANIME DETAIL & EPISODES ────────────────── */}
+      {/* ────────────────── 2. DEDICATED VIEW ALL ZONE PAGE ────────────────── */}
+      {viewAllZone && !selectedAnime && (
+        <div style={styles.viewAllPage}>
+          <header style={styles.subPageHeader}>
+            <button style={styles.subPageBackBtn} onClick={() => setViewAllZone(null)}>
+              ←
+            </button>
+            <h2 style={styles.subPageTitle}>{viewAllZone.name}</h2>
+          </header>
+
+          <div style={styles.animeGrid}>
+            {viewAllZone.animes.map((anime) => (
+              <div
+                key={anime.id}
+                style={styles.animeCard}
+                onClick={() => openAnimeDetails(anime)}
+              >
+                <div style={styles.posterContainer}>
+                  <img
+                    src={anime.thumbnail1 || 'https://images.unsplash.com/photo-1578632767115-351597cf2477?w=500'}
+                    alt={anime.name}
+                    style={styles.animePoster}
+                  />
+                </div>
+                <div style={styles.cardBottomMeta}>
+                  <div style={styles.animeCardTitle} title={anime.name}>
+                    {anime.name}
+                  </div>
+                  <div style={styles.cardSubTextRow}>
+                    <span style={styles.dubSubTag}>Dub | Sub</span>
+                    <span style={styles.menuDots}>⋮</span>
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* ────────────────── 3. DEDICATED MY LIST ITEMS CATEGORY VIEW ────────────────── */}
+      {selectedListCategory && !selectedAnime && (
+        <div style={styles.viewAllPage}>
+          <header style={styles.subPageHeader}>
+            <button style={styles.subPageBackBtn} onClick={() => setSelectedListCategory(null)}>
+              ←
+            </button>
+            <h2 style={styles.subPageTitle}>
+              {LIST_CATEGORIES.find((c) => c.key === selectedListCategory)?.label}
+            </h2>
+          </header>
+
+          {getAnimesInCategory(selectedListCategory).length === 0 ? (
+            <p style={styles.statusText}>No anime added to this list yet.</p>
+          ) : (
+            <div style={styles.animeGrid}>
+              {getAnimesInCategory(selectedListCategory).map((anime) => (
+                <div
+                  key={anime.id}
+                  style={styles.animeCard}
+                  onClick={() => openAnimeDetails(anime)}
+                >
+                  <div style={styles.posterContainer}>
+                    <img
+                      src={anime.thumbnail1 || 'https://images.unsplash.com/photo-1578632767115-351597cf2477?w=500'}
+                      alt={anime.name}
+                      style={styles.animePoster}
+                    />
+                  </div>
+                  <div style={styles.cardBottomMeta}>
+                    <div style={styles.animeCardTitle} title={anime.name}>
+                      {anime.name}
+                    </div>
+                    <div style={styles.cardSubTextRow}>
+                      <span style={styles.dubSubTag}>Dub | Sub</span>
+                      <span style={styles.menuDots}>⋮</span>
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* ────────────────── 4. ANIME DETAIL & EPISODES SCREEN ────────────────── */}
       {selectedAnime && (
         <div style={styles.detailPage}>
-          {/* Top Hero Image with Thumbnail 2 */}
           <div
             style={{
               ...styles.detailHero,
-              backgroundImage: `linear-gradient(to bottom, rgba(0,0,0,0.4) 0%, transparent 40%, #000000 95%), url('${selectedAnime.thumbnail2}')`,
+              backgroundImage: `linear-gradient(to bottom, rgba(0,0,0,0.6) 0%, transparent 40%, #000000 95%), url('${selectedAnime.thumbnail2 || selectedAnime.thumbnail1}')`,
             }}
           >
             <div style={styles.detailTopBar}>
@@ -395,13 +604,11 @@ export default function Home() {
                 ✕
               </button>
               <div style={styles.headerIcons}>
-                <span style={styles.iconBtn}>📺</span>
-                <span style={styles.iconBtn}>⋮</span>
+                <span style={{ fontSize: '1.4rem', cursor: 'pointer' }}>⋮</span>
               </div>
             </div>
           </div>
 
-          {/* Series Info Header */}
           <div style={styles.detailContent}>
             <div style={styles.awardBadge}>🔥 2026 Most Popular Anime</div>
             <h1 style={styles.detailTitle}>{selectedAnime.name}</h1>
@@ -417,9 +624,15 @@ export default function Home() {
             </div>
 
             <div style={styles.detailActionButtons}>
-              <div style={styles.actionBtn}>
-                <span style={{ fontSize: '1.2rem' }}>＋</span>
-                <span>My List</span>
+              <div style={styles.actionBtn} onClick={() => setShowListModal(true)}>
+                <span style={{ fontSize: '1.2rem' }}>
+                  {savedUserLists[selectedAnime.id] ? '✓' : '＋'}
+                </span>
+                <span>
+                  {savedUserLists[selectedAnime.id]
+                    ? LIST_CATEGORIES.find((c) => c.key === savedUserLists[selectedAnime.id].categoryKey)?.label.split(' ')[1] || 'In List'
+                    : 'My List'}
+                </span>
               </div>
               <div style={styles.actionBtn}>
                 <span style={{ fontSize: '1.2rem' }}>↗</span>
@@ -462,12 +675,12 @@ export default function Home() {
 
             {loadingDetails && <p style={styles.statusText}>Loading season episodes...</p>}
 
-            {/* Episode List (Picture 3 Layout) */}
+            {/* Episode List */}
             <div style={styles.episodeList}>
               {seasons[selectedSeasonIndex]?.episodes.map((ep, idx) => {
                 const epTitle = ep.name.replace(/\.[^/.]+$/, '');
                 const epThumb = ep.thumbnailLink
-                  ? ep.thumbnailLink.replace('=s220', '=s500')
+                  ? ep.thumbnailLink.replace(/=s\d+/, '=s500')
                   : selectedAnime.thumbnail1;
 
                 return (
@@ -513,13 +726,55 @@ export default function Home() {
               >
                 ▶ Continue E1
               </button>
-              <button style={styles.stickyBookmarkBtn}>🔖</button>
+              <button
+                style={styles.stickyBookmarkBtn}
+                onClick={() => setShowListModal(true)}
+              >
+                <svg width="20" height="20" viewBox="0 0 24 24" fill={savedUserLists[selectedAnime.id] ? '#f47521' : 'none'} stroke="#f47521" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z" />
+                </svg>
+              </button>
             </div>
           )}
         </div>
       )}
 
-      {/* ────────────────── SCREEN 4: FULLSCREEN VIDEO PLAYER ────────────────── */}
+      {/* ────────────────── 5. ADD TO MY LIST BOTTOM SHEET MODAL ────────────────── */}
+      {showListModal && selectedAnime && (
+        <div style={styles.modalOverlay} onClick={() => setShowListModal(false)}>
+          <div style={styles.listModalContent} onClick={(e) => e.stopPropagation()}>
+            <div style={styles.listModalHeader}>
+              <h3 style={styles.listModalTitle}>Save to My Lists</h3>
+              <button style={styles.closeBtnText} onClick={() => setShowListModal(false)}>
+                ✕
+              </button>
+            </div>
+            <div style={styles.listOptionsContainer}>
+              {LIST_CATEGORIES.map((cat) => {
+                const isSelected = savedUserLists[selectedAnime.id]?.categoryKey === cat.key;
+                return (
+                  <div
+                    key={cat.key}
+                    style={{
+                      ...styles.listOptionRow,
+                      backgroundColor: isSelected ? 'rgba(244, 117, 33, 0.15)' : '#1a1a1a',
+                      borderColor: isSelected ? '#f47521' : '#282828',
+                    }}
+                    onClick={() => saveAnimeToList(selectedAnime, cat.key)}
+                  >
+                    <span style={{ fontWeight: isSelected ? 700 : 500, color: isSelected ? '#f47521' : '#ffffff' }}>
+                      {cat.label}
+                    </span>
+                    {isSelected && <span style={{ color: '#f47521', fontWeight: 900 }}>✓</span>}
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ────────────────── 6. FULLSCREEN VIDEO PLAYER ────────────────── */}
       {activeEpisode && (
         <div style={styles.playerBackdrop}>
           <div
@@ -546,7 +801,6 @@ export default function Home() {
               }}
             />
 
-            {/* Gesture OSD */}
             {activeGesture && (
               <div style={activeGesture === 'volume' ? styles.osdLeft : styles.osdRight}>
                 <span style={styles.osdPercent}>{gesturePercent}%</span>
@@ -559,7 +813,6 @@ export default function Home() {
               </div>
             )}
 
-            {/* Controls */}
             {showControls && (
               <div style={styles.playerControls}>
                 <div style={styles.playerTopBar}>
@@ -622,11 +875,52 @@ export default function Home() {
           </div>
         </div>
       )}
+
+      {/* ────────────────── 7. STICKY BOTTOM NAVIGATION BAR ────────────────── */}
+      {!selectedAnime && !activeEpisode && (
+        <nav style={styles.bottomNav}>
+          <div
+            style={{ ...styles.navItem, color: currentTab === 'home' ? '#f47521' : '#888888' }}
+            onClick={() => {
+              setCurrentTab('home');
+              setViewAllZone(null);
+              setSelectedListCategory(null);
+            }}
+          >
+            <span>🏠</span>
+            <span>Home</span>
+          </div>
+
+          <div
+            style={{ ...styles.navItem, color: currentTab === 'mylists' ? '#f47521' : '#888888' }}
+            onClick={() => {
+              setCurrentTab('mylists');
+              setViewAllZone(null);
+              setSelectedListCategory(null);
+            }}
+          >
+            <span>🔖</span>
+            <span>My Lists</span>
+          </div>
+
+          <div
+            style={{ ...styles.navItem, color: currentTab === 'browse' ? '#f47521' : '#888888' }}
+            onClick={() => {
+              setCurrentTab('browse');
+              setViewAllZone(null);
+              setSelectedListCategory(null);
+            }}
+          >
+            <span>▦</span>
+            <span>Browse</span>
+          </div>
+        </nav>
+      )}
     </main>
   );
 }
 
-// ────────────────── CRUNCHYROLL PIXEL-PERFECT STYLING ──────────────────
+// ────────────────── PIXEL-PERFECT STYLING ──────────────────
 const styles: { [key: string]: React.CSSProperties } = {
   main: {
     backgroundColor: '#000000',
@@ -634,57 +928,71 @@ const styles: { [key: string]: React.CSSProperties } = {
     minHeight: '100vh',
     fontFamily: 'system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif',
   },
-  // Home Screen
-  homeHeader: {
-    position: 'sticky',
+  blendedHomeHeader: {
+    position: 'absolute',
     top: 0,
+    left: 0,
+    right: 0,
     zIndex: 100,
-    backgroundColor: 'rgba(0, 0, 0, 0.9)',
-    backdropFilter: 'blur(10px)',
+    background: 'linear-gradient(to bottom, rgba(0, 0, 0, 0.8) 0%, rgba(0, 0, 0, 0.4) 60%, transparent 100%)',
     display: 'flex',
     justifyContent: 'space-between',
     alignItems: 'center',
-    padding: '12px 16px',
+    padding: '16px 20px',
   },
   homeLogo: {
-    fontSize: '1.2rem',
-    fontWeight: 900,
-    color: '#f47521',
-    letterSpacing: '1px',
     display: 'flex',
     alignItems: 'center',
-    gap: '6px',
   },
-  crSpiral: {
-    fontSize: '1.3rem',
+  crSpiralWrapper: {
+    width: '32px',
+    height: '32px',
+    borderRadius: '50%',
+    backgroundColor: '#f47521',
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  crSpiralOuter: {
+    width: '24px',
+    height: '24px',
+    borderRadius: '50%',
+    backgroundColor: '#000000',
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  crSpiralInner: {
+    width: '12px',
+    height: '12px',
+    borderRadius: '50%',
+    backgroundColor: '#f47521',
   },
   headerIcons: {
     display: 'flex',
-    gap: '16px',
-  },
-  iconBtn: {
-    fontSize: '1.2rem',
-    cursor: 'pointer',
+    alignItems: 'center',
+    color: '#ffffff',
   },
   heroBanner: {
     position: 'relative',
-    height: '460px',
+    height: '520px',
     backgroundSize: 'cover',
     backgroundPosition: 'center top',
     display: 'flex',
     flexDirection: 'column',
     justifyContent: 'flex-end',
-    padding: '20px 16px',
+    padding: '24px 18px',
   },
   heroContent: {
     maxWidth: '550px',
   },
   heroTitle: {
-    fontSize: '1.8rem',
+    fontSize: '2.1rem',
     fontWeight: 900,
     textTransform: 'uppercase',
     letterSpacing: '1px',
-    marginBottom: '6px',
+    marginBottom: '8px',
+    lineHeight: 1.1,
   },
   tagRow: {
     fontSize: '0.8rem',
@@ -692,20 +1000,21 @@ const styles: { [key: string]: React.CSSProperties } = {
     display: 'flex',
     alignItems: 'center',
     gap: '6px',
-    marginBottom: '8px',
+    marginBottom: '10px',
   },
   ageBadge: {
-    backgroundColor: '#333333',
+    backgroundColor: '#2b2b2b',
+    color: '#e0e0e0',
     padding: '2px 6px',
     borderRadius: '3px',
     fontSize: '0.7rem',
     fontWeight: 700,
   },
   heroDesc: {
-    fontSize: '0.85rem',
-    color: '#aaaaaa',
-    lineHeight: 1.4,
-    marginBottom: '16px',
+    fontSize: '0.86rem',
+    color: '#b0b0b0',
+    lineHeight: 1.45,
+    marginBottom: '18px',
     display: '-webkit-box',
     WebkitLineClamp: 2,
     WebkitBoxOrient: 'vertical',
@@ -722,20 +1031,18 @@ const styles: { [key: string]: React.CSSProperties } = {
     backgroundColor: '#f47521',
     color: '#000000',
     border: 'none',
-    borderRadius: '24px',
-    padding: '12px 20px',
-    fontSize: '0.95rem',
+    borderRadius: '26px',
+    padding: '13px 20px',
+    fontSize: '0.98rem',
     fontWeight: 800,
     cursor: 'pointer',
   },
   bookmarkBtn: {
-    width: '46px',
-    height: '46px',
+    width: '48px',
+    height: '48px',
     borderRadius: '50%',
-    backgroundColor: 'rgba(255, 255, 255, 0.15)',
-    border: '1px solid rgba(255, 255, 255, 0.3)',
-    color: '#ffffff',
-    fontSize: '1.1rem',
+    backgroundColor: 'rgba(255, 255, 255, 0.1)',
+    border: '1.5px solid rgba(255, 255, 255, 0.25)',
     display: 'flex',
     alignItems: 'center',
     justifyContent: 'center',
@@ -751,9 +1058,8 @@ const styles: { [key: string]: React.CSSProperties } = {
     borderRadius: '2px',
     backgroundColor: 'rgba(255, 255, 255, 0.3)',
   },
-  // Zones & Grid
   zoneSection: {
-    padding: '20px 16px 0',
+    padding: '22px 18px 0',
   },
   zoneHeader: {
     display: 'flex',
@@ -762,7 +1068,7 @@ const styles: { [key: string]: React.CSSProperties } = {
     marginBottom: '12px',
   },
   zoneTitle: {
-    fontSize: '1.15rem',
+    fontSize: '1.18rem',
     fontWeight: 800,
     margin: 0,
   },
@@ -777,27 +1083,133 @@ const styles: { [key: string]: React.CSSProperties } = {
   animeGrid: {
     display: 'grid',
     gridTemplateColumns: 'repeat(3, 1fr)',
-    gap: '10px',
+    gap: '12px',
+    alignItems: 'start',
   },
   animeCard: {
+    display: 'flex',
+    flexDirection: 'column',
     cursor: 'pointer',
+    width: '100%',
+  },
+  posterContainer: {
+    width: '100%',
+    aspectRatio: '2 / 3',
+    borderRadius: '4px',
+    overflow: 'hidden',
+    backgroundColor: '#161616',
+    border: '1px solid #1f1f1f',
   },
   animePoster: {
     width: '100%',
-    aspectRatio: '2 / 3',
+    height: '100%',
     objectFit: 'cover',
-    borderRadius: '6px',
-    backgroundColor: '#161616',
+    display: 'block',
+  },
+  cardBottomMeta: {
+    marginTop: '6px',
+    display: 'flex',
+    flexDirection: 'column',
+    gap: '2px',
   },
   animeCardTitle: {
-    marginTop: '6px',
-    fontSize: '0.8rem',
+    fontSize: '0.84rem',
     fontWeight: 600,
-    color: '#dddddd',
+    color: '#ffffff',
     whiteSpace: 'nowrap',
     overflow: 'hidden',
     textOverflow: 'ellipsis',
+    lineHeight: 1.25,
   },
+  cardSubTextRow: {
+    display: 'flex',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  dubSubTag: {
+    fontSize: '0.72rem',
+    color: '#777777',
+    fontWeight: 500,
+  },
+  menuDots: {
+    fontSize: '0.9rem',
+    color: '#666666',
+  },
+  // My Lists (Image 2 style)
+  myListsContainer: {
+    padding: '20px 16px',
+  },
+  pageTopBar: {
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: '20px',
+  },
+  pageTitle: {
+    fontSize: '1.4rem',
+    fontWeight: 800,
+    margin: 0,
+  },
+  myListsCardList: {
+    display: 'flex',
+    flexDirection: 'column',
+    gap: '12px',
+  },
+  myListCategoryCard: {
+    backgroundColor: '#121216',
+    border: '1px solid #1f1f26',
+    borderRadius: '8px',
+    padding: '16px',
+    display: 'flex',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    cursor: 'pointer',
+  },
+  catCardTitle: {
+    fontSize: '1rem',
+    fontWeight: 700,
+    color: '#ffffff',
+    marginBottom: '4px',
+  },
+  catCardSubtitle: {
+    fontSize: '0.8rem',
+    color: '#777788',
+  },
+  catCardMenu: {
+    fontSize: '1.2rem',
+    color: '#888888',
+  },
+  // Browse Container
+  browseContainer: {
+    padding: '20px 16px',
+  },
+  browseCount: {
+    fontSize: '0.85rem',
+    color: '#888888',
+  },
+  // Sub-Pages (View All & Category Details)
+  viewAllPage: {
+    padding: '20px 16px 80px',
+  },
+  subPageHeader: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: '14px',
+    marginBottom: '20px',
+  },
+  subPageBackBtn: {
+    background: 'none',
+    border: 'none',
+    color: '#ffffff',
+    fontSize: '1.6rem',
+    cursor: 'pointer',
+  },
+  subPageTitle: {
+    fontSize: '1.3rem',
+    fontWeight: 800,
+    margin: 0,
+  },
+  // Bottom Navigation (3 items)
   bottomNav: {
     position: 'fixed',
     bottom: 0,
@@ -807,16 +1219,66 @@ const styles: { [key: string]: React.CSSProperties } = {
     borderTop: '1px solid #1a1a1a',
     display: 'flex',
     justifyContent: 'space-around',
-    padding: '8px 0',
+    padding: '10px 0',
     zIndex: 99,
   },
   navItem: {
     display: 'flex',
     flexDirection: 'column',
     alignItems: 'center',
-    gap: '2px',
-    fontSize: '0.68rem',
+    gap: '4px',
+    fontSize: '0.75rem',
+    fontWeight: 600,
+    cursor: 'pointer',
+  },
+  // Modal for Add to My Lists
+  modalOverlay: {
+    position: 'fixed',
+    inset: 0,
+    backgroundColor: 'rgba(0,0,0,0.75)',
+    zIndex: 1000,
+    display: 'flex',
+    alignItems: 'flex-end',
+  },
+  listModalContent: {
+    width: '100%',
+    backgroundColor: '#121214',
+    borderTopLeftRadius: '16px',
+    borderTopRightRadius: '16px',
+    padding: '20px',
+    borderTop: '1px solid #282828',
+  },
+  listModalHeader: {
+    display: 'flex',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: '16px',
+  },
+  listModalTitle: {
+    fontSize: '1.1rem',
+    fontWeight: 800,
+    margin: 0,
+  },
+  closeBtnText: {
+    background: 'none',
+    border: 'none',
     color: '#888888',
+    fontSize: '1.2rem',
+    cursor: 'pointer',
+  },
+  listOptionsContainer: {
+    display: 'flex',
+    flexDirection: 'column',
+    gap: '10px',
+  },
+  listOptionRow: {
+    padding: '14px 16px',
+    borderRadius: '8px',
+    border: '1px solid',
+    display: 'flex',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    cursor: 'pointer',
   },
   // Detail Page
   detailPage: {
@@ -826,7 +1288,7 @@ const styles: { [key: string]: React.CSSProperties } = {
   },
   detailHero: {
     position: 'relative',
-    height: '280px',
+    height: '300px',
     backgroundSize: 'cover',
     backgroundPosition: 'center',
     padding: '16px',
@@ -848,7 +1310,7 @@ const styles: { [key: string]: React.CSSProperties } = {
   },
   detailContent: {
     padding: '0 16px',
-    marginTop: '-20px',
+    marginTop: '-24px',
   },
   awardBadge: {
     fontSize: '0.75rem',
@@ -857,7 +1319,7 @@ const styles: { [key: string]: React.CSSProperties } = {
     marginBottom: '6px',
   },
   detailTitle: {
-    fontSize: '1.6rem',
+    fontSize: '1.65rem',
     fontWeight: 900,
     marginBottom: '6px',
   },
@@ -943,7 +1405,6 @@ const styles: { [key: string]: React.CSSProperties } = {
     fontSize: '0.78rem',
     color: '#aaaaaa',
   },
-  // Episodes List (Picture 3)
   episodeList: {
     display: 'flex',
     flexDirection: 'column',
@@ -1041,13 +1502,11 @@ const styles: { [key: string]: React.CSSProperties } = {
     borderRadius: '50%',
     backgroundColor: '#161616',
     border: '1px solid #333333',
-    color: '#ffffff',
-    fontSize: '1.1rem',
     display: 'flex',
     alignItems: 'center',
     justifyContent: 'center',
   },
-  // Fullscreen Video Player
+  // Video Player
   playerBackdrop: {
     position: 'fixed',
     inset: 0,
