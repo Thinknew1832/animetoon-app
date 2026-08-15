@@ -53,9 +53,13 @@ export default function Home() {
   // Data states
   const [zones, setZones] = useState<ZoneGroup[]>([]);
   const [allAnimes, setAllAnimes] = useState<AnimeItem[]>([]);
-  const [featuredAnime, setFeaturedAnime] = useState<AnimeItem | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+
+  // Hero Carousel State
+  const [heroIndex, setHeroIndex] = useState(0);
+  const touchHeroStartX = useRef<number>(0);
+  const touchHeroEndX = useRef<number>(0);
 
   // My Lists Storage
   const [savedUserLists, setSavedUserLists] = useState<{ [key: string]: { categoryKey: string; anime: AnimeItem; date: string } }>({});
@@ -85,6 +89,45 @@ export default function Home() {
   const touchStartX = useRef<number>(0);
   const startLevel = useRef<number>(0);
 
+  // 1. Android Mobile Back Button Stack Handling (History Popstate)
+  useEffect(() => {
+    window.history.replaceState({ page: 'home' }, '');
+
+    const handlePopState = (event: PopStateEvent) => {
+      if (activeEpisode) {
+        setActiveEpisode(null);
+        return;
+      }
+      if (showListModal) {
+        setShowListModal(false);
+        return;
+      }
+      if (selectedAnime) {
+        setSelectedAnime(null);
+        return;
+      }
+      if (viewAllZone) {
+        setViewAllZone(null);
+        return;
+      }
+      if (selectedListCategory) {
+        setSelectedListCategory(null);
+        return;
+      }
+      if (currentTab !== 'home') {
+        setCurrentTab('home');
+      }
+    };
+
+    window.addEventListener('popstate', handlePopState);
+    return () => window.removeEventListener('popstate', handlePopState);
+  }, [activeEpisode, showListModal, selectedAnime, viewAllZone, selectedListCategory, currentTab]);
+
+  const pushNavStep = (stepName: string) => {
+    window.history.pushState({ page: stepName }, '');
+  };
+
+  // Load Saved User Lists
   useEffect(() => {
     try {
       const stored = localStorage.getItem('animetoon_user_lists');
@@ -105,6 +148,7 @@ export default function Home() {
     setShowListModal(false);
   };
 
+  // 2. Fetch Catalog from Google Drive
   useEffect(() => {
     async function fetchCatalog() {
       try {
@@ -162,9 +206,6 @@ export default function Home() {
 
         setZones(loadedZones);
         setAllAnimes(accumulatedAnimes);
-        if (loadedZones.length > 0 && loadedZones[0].animes.length > 0) {
-          setFeaturedAnime(loadedZones[0].animes[0]);
-        }
       } catch (err: any) {
         setError(err.message || 'Failed to connect to Google Drive.');
       } finally {
@@ -175,7 +216,35 @@ export default function Home() {
     fetchCatalog();
   }, []);
 
+  // 3. Auto-swipe Hero Banner every 8 seconds
+  const heroAnimes = allAnimes.slice(0, 6);
+  useEffect(() => {
+    if (heroAnimes.length <= 1) return;
+    const interval = setInterval(() => {
+      setHeroIndex((prev) => (prev + 1) % heroAnimes.length);
+    }, 8000);
+    return () => clearInterval(interval);
+  }, [heroAnimes.length]);
+
+  const handleHeroTouchStart = (e: React.TouchEvent) => {
+    touchHeroStartX.current = e.touches[0].clientX;
+  };
+
+  const handleHeroTouchMove = (e: React.TouchEvent) => {
+    touchHeroEndX.current = e.touches[0].clientX;
+  };
+
+  const handleHeroTouchEnd = () => {
+    const diff = touchHeroStartX.current - touchHeroEndX.current;
+    if (diff > 50) {
+      setHeroIndex((prev) => (prev + 1) % heroAnimes.length);
+    } else if (diff < -50) {
+      setHeroIndex((prev) => (prev - 1 + heroAnimes.length) % heroAnimes.length);
+    }
+  };
+
   const openAnimeDetails = async (anime: AnimeItem) => {
+    pushNavStep('detail');
     setSelectedAnime(anime);
     setLoadingDetails(true);
     try {
@@ -284,39 +353,56 @@ export default function Home() {
       .map((item) => item.anime);
   };
 
+  const currentHero = heroAnimes[heroIndex] || allAnimes[0];
+
   return (
     <main style={styles.main}>
+      {/* ────────────────── CENTER SCREEN LOADER ────────────────── */}
+      {loading && (
+        <div style={styles.centerLoaderBox}>
+          <div style={styles.loadingSpinner} />
+          <p style={styles.loadingText}>Loading Anime Library...</p>
+        </div>
+      )}
+
       {/* ────────────────── 1. MAIN TABS ────────────────── */}
-      {!selectedAnime && !viewAllZone && !selectedListCategory && (
+      {!loading && !selectedAnime && !viewAllZone && !selectedListCategory && (
         <div style={{ paddingBottom: '85px' }}>
           {/* TAB 1: HOME PAGE */}
           {currentTab === 'home' && (
             <>
-              <header style={styles.blendedHomeHeader}>
+              {/* 100% Pure Transparent Header */}
+              <header style={styles.pureTransparentHeader}>
                 <div style={styles.homeLogo}>
-                  <div style={styles.crSpiralWrapper}>
-                    <div style={styles.crSpiralOuter}>
-                      <div style={styles.crSpiralInner} />
-                    </div>
-                  </div>
+                  <svg width="34" height="34" viewBox="0 0 100 100" fill="none" style={styles.logoShadow}>
+                    <path
+                      d="M50 5C25.147 5 5 25.147 5 50C5 74.853 25.147 95 50 95C74.853 95 95 74.853 95 50C95 38.3 90.5 27.5 83 19.5C80 28 72 34 62.5 34C50.626 34 41 24.374 41 12.5C41 9.8 41.5 7.3 42.5 5C50 5 50 5 50 5Z"
+                      fill="#f47521"
+                    />
+                    <circle cx="68" cy="62" r="16" fill="#f47521" />
+                  </svg>
                 </div>
                 <div style={styles.headerIcons}>
-                  <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" style={{ cursor: 'pointer' }}>
+                  <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#ffffff" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round" style={styles.iconShadow}>
                     <circle cx="11" cy="11" r="8" />
                     <line x1="21" y1="21" x2="16.65" y2="16.65" />
                   </svg>
                 </div>
               </header>
 
-              {featuredAnime && (
+              {/* Swipeable 8s Auto-Carousel Hero Banner */}
+              {currentHero && (
                 <section
+                  onTouchStart={handleHeroTouchStart}
+                  onTouchMove={handleHeroTouchMove}
+                  onTouchEnd={handleHeroTouchEnd}
                   style={{
                     ...styles.heroBanner,
-                    backgroundImage: `linear-gradient(to bottom, rgba(0,0,0,0.7) 0%, transparent 25%, transparent 55%, #000000 98%), url('${featuredAnime.thumbnail2 || featuredAnime.thumbnail1}')`,
+                    backgroundImage: `linear-gradient(to bottom, transparent 0%, transparent 40%, rgba(0,0,0,0.6) 75%, #000000 100%), url('${currentHero.thumbnail2 || currentHero.thumbnail1}')`,
                   }}
                 >
                   <div style={styles.heroContent}>
-                    <h1 style={styles.heroTitle}>{featuredAnime.name}</h1>
+                    <h1 style={styles.heroTitle}>{currentHero.name}</h1>
                     <div style={styles.tagRow}>
                       <span style={styles.ageBadge}>A</span>
                       <span>• Dub | Sub • Action, Supernatural, Shonen</span>
@@ -328,14 +414,15 @@ export default function Home() {
                     <div style={styles.heroActionRow}>
                       <button
                         style={styles.heroWatchBtn}
-                        onClick={() => openAnimeDetails(featuredAnime)}
+                        onClick={() => openAnimeDetails(currentHero)}
                       >
                         ▶ Start Watching E1
                       </button>
                       <button
                         style={styles.bookmarkBtn}
                         onClick={() => {
-                          setSelectedAnime(featuredAnime);
+                          pushNavStep('modal');
+                          setSelectedAnime(currentHero);
                           setShowListModal(true);
                         }}
                       >
@@ -345,17 +432,24 @@ export default function Home() {
                       </button>
                     </div>
 
+                    {/* Carousel Dots */}
                     <div style={styles.carouselIndicators}>
-                      <span style={{ ...styles.dot, backgroundColor: '#f47521', width: '28px' }}></span>
-                      <span style={styles.dot}></span>
-                      <span style={styles.dot}></span>
-                      <span style={styles.dot}></span>
+                      {heroAnimes.map((_, i) => (
+                        <span
+                          key={i}
+                          onClick={() => setHeroIndex(i)}
+                          style={{
+                            ...styles.dot,
+                            backgroundColor: i === heroIndex ? '#f47521' : 'rgba(255, 255, 255, 0.3)',
+                            width: i === heroIndex ? '26px' : '8px',
+                          }}
+                        />
+                      ))}
                     </div>
                   </div>
                 </section>
               )}
 
-              {loading && <p style={styles.statusText}>Loading anime library...</p>}
               {error && <p style={{ ...styles.statusText, color: '#ff5555' }}>{error}</p>}
 
               {zones.map((zone) => (
@@ -365,7 +459,10 @@ export default function Home() {
                     {zone.animes.length > 3 && (
                       <button
                         style={styles.viewAllBtn}
-                        onClick={() => setViewAllZone(zone)}
+                        onClick={() => {
+                          pushNavStep('viewall');
+                          setViewAllZone(zone);
+                        }}
                       >
                         View All ➔
                       </button>
@@ -419,7 +516,10 @@ export default function Home() {
                     <div
                       key={cat.key}
                       style={styles.myListCategoryCard}
-                      onClick={() => setSelectedListCategory(cat.key)}
+                      onClick={() => {
+                        pushNavStep('category');
+                        setSelectedListCategory(cat.key);
+                      }}
                     >
                       <div>
                         <div style={styles.catCardTitle}>{cat.label}</div>
@@ -474,11 +574,11 @@ export default function Home() {
         </div>
       )}
 
-      {/* ────────────────── 2. DEDICATED VIEW ALL ZONE PAGE ────────────────── */}
+      {/* ────────────────── 2. VIEW ALL ZONE SCREEN ────────────────── */}
       {viewAllZone && !selectedAnime && (
         <div style={styles.viewAllPage}>
           <header style={styles.subPageHeader}>
-            <button style={styles.subPageBackBtn} onClick={() => setViewAllZone(null)}>
+            <button style={styles.subPageBackBtn} onClick={() => window.history.back()}>
               ←
             </button>
             <h2 style={styles.subPageTitle}>{viewAllZone.name}</h2>
@@ -513,11 +613,11 @@ export default function Home() {
         </div>
       )}
 
-      {/* ────────────────── 3. DEDICATED MY LIST ITEMS CATEGORY VIEW ────────────────── */}
+      {/* ────────────────── 3. MY LISTS DETAIL CATEGORY SCREEN ────────────────── */}
       {selectedListCategory && !selectedAnime && (
         <div style={styles.viewAllPage}>
           <header style={styles.subPageHeader}>
-            <button style={styles.subPageBackBtn} onClick={() => setSelectedListCategory(null)}>
+            <button style={styles.subPageBackBtn} onClick={() => window.history.back()}>
               ←
             </button>
             <h2 style={styles.subPageTitle}>
@@ -558,7 +658,7 @@ export default function Home() {
         </div>
       )}
 
-      {/* ────────────────── 4. ANIME DETAIL SCREEN ────────────────── */}
+      {/* ────────────────── 4. CLEAN ANIME DETAIL SCREEN ────────────────── */}
       {selectedAnime && (
         <div style={styles.detailPage}>
           <div
@@ -568,7 +668,7 @@ export default function Home() {
             }}
           >
             <div style={styles.detailTopBar}>
-              <button style={styles.roundBackBtn} onClick={() => setSelectedAnime(null)}>
+              <button style={styles.roundBackBtn} onClick={() => window.history.back()}>
                 ✕
               </button>
               <div style={styles.headerIcons}>
@@ -591,8 +691,15 @@ export default function Home() {
               <span>Average: <b>4.8</b> (450K) ▾</span>
             </div>
 
+            {/* Clean Single Action: My List */}
             <div style={styles.detailActionButtons}>
-              <div style={styles.actionBtn} onClick={() => setShowListModal(true)}>
+              <div
+                style={styles.actionBtn}
+                onClick={() => {
+                  pushNavStep('modal');
+                  setShowListModal(true);
+                }}
+              >
                 <span style={{ fontSize: '1.2rem' }}>
                   {savedUserLists[selectedAnime.id] ? '✓' : '＋'}
                 </span>
@@ -602,10 +709,6 @@ export default function Home() {
                     : 'My List'}
                 </span>
               </div>
-              <div style={styles.actionBtn}>
-                <span style={{ fontSize: '1.2rem' }}>↗</span>
-                <span>Share</span>
-              </div>
             </div>
 
             <p style={styles.synopsisText}>
@@ -613,12 +716,12 @@ export default function Home() {
             </p>
             <span style={styles.moreDetailsText}>More Details</span>
 
+            {/* Clean Tab Bar */}
             <div style={styles.tabsRow}>
               <span style={styles.tabActive}>Episodes</span>
-              <span style={styles.tabInactive}>Featured Music</span>
-              <span style={styles.tabInactive}>More Like This</span>
             </div>
 
+            {/* Season Selector */}
             {seasons.length > 0 && (
               <div style={styles.seasonSelectorRow}>
                 <select
@@ -632,15 +735,16 @@ export default function Home() {
                     </option>
                   ))}
                 </select>
-                <div style={styles.downloadAllRow}>
-                  <span>Download All</span>
-                  <span>⬇</span>
-                </div>
               </div>
             )}
 
-            {loadingDetails && <p style={styles.statusText}>Loading season episodes...</p>}
+            {loadingDetails && (
+              <div style={{ padding: '30px 0', textAlign: 'center' }}>
+                <div style={styles.loadingSpinner} />
+              </div>
+            )}
 
+            {/* Clean Episode List (No Premium Badge & No Download Icons) */}
             <div style={styles.episodeList}>
               {seasons[selectedSeasonIndex]?.episodes.map((ep, idx) => {
                 const epTitle = ep.name.replace(/\.[^/.]+$/, '');
@@ -653,13 +757,13 @@ export default function Home() {
                     key={ep.id}
                     style={styles.episodeCard}
                     onClick={() => {
+                      pushNavStep('player');
                       setActiveEpisode({ title: epTitle, id: ep.id });
                       setIsPlaying(true);
                     }}
                   >
                     <div style={styles.epThumbWrapper}>
                       <img src={epThumb} alt={ep.name} style={styles.epImage} />
-                      <span style={styles.premiumBadge}>👑 PREMIUM</span>
                       <span style={styles.durationBadge}>24m</span>
                     </div>
 
@@ -668,31 +772,33 @@ export default function Home() {
                         {idx + 1}. {epTitle}
                       </div>
                     </div>
-
-                    <div style={styles.epRightIcons}>
-                      <span style={styles.epDownloadIcon}>⬇</span>
-                      <span style={styles.epMenuIcon}>⋮</span>
-                    </div>
                   </div>
                 );
               })}
             </div>
           </div>
 
+          {/* Sticky Bottom Watch Button */}
           {seasons.length > 0 && seasons[0].episodes.length > 0 && (
             <div style={styles.stickyBottomBar}>
               <button
                 style={styles.stickyPlayBtn}
                 onClick={() => {
                   const ep = seasons[selectedSeasonIndex]?.episodes[0];
-                  if (ep) setActiveEpisode({ title: ep.name.replace(/\.[^/.]+$/, ''), id: ep.id });
+                  if (ep) {
+                    pushNavStep('player');
+                    setActiveEpisode({ title: ep.name.replace(/\.[^/.]+$/, ''), id: ep.id });
+                  }
                 }}
               >
                 ▶ Continue E1
               </button>
               <button
                 style={styles.stickyBookmarkBtn}
-                onClick={() => setShowListModal(true)}
+                onClick={() => {
+                  pushNavStep('modal');
+                  setShowListModal(true);
+                }}
               >
                 <svg width="20" height="20" viewBox="0 0 24 24" fill={savedUserLists[selectedAnime.id] ? '#f47521' : 'none'} stroke="#f47521" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
                   <path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z" />
@@ -705,11 +811,11 @@ export default function Home() {
 
       {/* ────────────────── 5. ADD TO MY LIST MODAL ────────────────── */}
       {showListModal && selectedAnime && (
-        <div style={styles.modalOverlay} onClick={() => setShowListModal(false)}>
+        <div style={styles.modalOverlay} onClick={() => window.history.back()}>
           <div style={styles.listModalContent} onClick={(e) => e.stopPropagation()}>
             <div style={styles.listModalHeader}>
               <h3 style={styles.listModalTitle}>Save to My Lists</h3>
-              <button style={styles.closeBtnText} onClick={() => setShowListModal(false)}>
+              <button style={styles.closeBtnText} onClick={() => window.history.back()}>
                 ✕
               </button>
             </div>
@@ -780,7 +886,7 @@ export default function Home() {
             {showControls && (
               <div style={styles.playerControls}>
                 <div style={styles.playerTopBar}>
-                  <button style={styles.closePlayerBtn} onClick={() => setActiveEpisode(null)}>
+                  <button style={styles.closePlayerBtn} onClick={() => window.history.back()}>
                     ✕
                   </button>
                   <div style={styles.playerVideoTitle}>{activeEpisode.title}</div>
@@ -840,42 +946,64 @@ export default function Home() {
         </div>
       )}
 
-      {/* ────────────────── 7. BOTTOM NAVIGATION BAR ────────────────── */}
+      {/* ────────────────── 7. IMAGE 2 MATCHING BOTTOM NAVIGATION BAR ────────────────── */}
       {!selectedAnime && !activeEpisode && (
         <nav style={styles.bottomNav}>
+          {/* Home Icon */}
           <div
-            style={{ ...styles.navItem, color: currentTab === 'home' ? '#f47521' : '#888888' }}
+            style={{
+              ...styles.navItem,
+              color: currentTab === 'home' ? '#f47521' : '#ffffff',
+            }}
             onClick={() => {
               setCurrentTab('home');
               setViewAllZone(null);
               setSelectedListCategory(null);
             }}
           >
-            <span style={{ fontSize: '1.2rem' }}>🏠</span>
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z" />
+              <polyline points="9 22 9 12 15 12 15 22" />
+            </svg>
             <span>Home</span>
           </div>
 
+          {/* My Lists Icon */}
           <div
-            style={{ ...styles.navItem, color: currentTab === 'mylists' ? '#f47521' : '#888888' }}
+            style={{
+              ...styles.navItem,
+              color: currentTab === 'mylists' ? '#f47521' : '#ffffff',
+            }}
             onClick={() => {
               setCurrentTab('mylists');
               setViewAllZone(null);
               setSelectedListCategory(null);
             }}
           >
-            <span style={{ fontSize: '1.2rem' }}>🔖</span>
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z" />
+            </svg>
             <span>My Lists</span>
           </div>
 
+          {/* Browse Icon */}
           <div
-            style={{ ...styles.navItem, color: currentTab === 'browse' ? '#f47521' : '#888888' }}
+            style={{
+              ...styles.navItem,
+              color: currentTab === 'browse' ? '#f47521' : '#ffffff',
+            }}
             onClick={() => {
               setCurrentTab('browse');
               setViewAllZone(null);
               setSelectedListCategory(null);
             }}
           >
-            <span style={{ fontSize: '1.2rem' }}>▦</span>
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+              <rect x="3" y="3" width="7" height="7" rx="1.5" />
+              <rect x="14" y="3" width="7" height="7" rx="1.5" />
+              <rect x="14" y="14" width="7" height="7" rx="1.5" />
+              <rect x="3" y="14" width="7" height="7" rx="1.5" />
+            </svg>
             <span>Browse</span>
           </div>
         </nav>
@@ -884,7 +1012,7 @@ export default function Home() {
   );
 }
 
-// ────────────────── PIXEL-PERFECT BALANCED STYLING ──────────────────
+// ────────────────── PIXEL-PERFECT STYLING ──────────────────
 const styles: { [key: string]: React.CSSProperties } = {
   main: {
     backgroundColor: '#000000',
@@ -892,13 +1020,36 @@ const styles: { [key: string]: React.CSSProperties } = {
     minHeight: '100vh',
     fontFamily: 'system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif',
   },
-  blendedHomeHeader: {
+  // Center Screen Loader
+  centerLoaderBox: {
+    display: 'flex',
+    flexDirection: 'column',
+    alignItems: 'center',
+    justifyContent: 'center',
+    minHeight: '80vh',
+    gap: '16px',
+  },
+  loadingSpinner: {
+    width: '42px',
+    height: '42px',
+    border: '3.5px solid rgba(255, 255, 255, 0.15)',
+    borderTopColor: '#f47521',
+    borderRadius: '50%',
+    animation: 'spin 0.8s linear infinite',
+  },
+  loadingText: {
+    fontSize: '0.9rem',
+    color: '#aaaaaa',
+    fontWeight: 600,
+  },
+  // Header
+  pureTransparentHeader: {
     position: 'absolute',
     top: 0,
     left: 0,
     right: 0,
     zIndex: 100,
-    background: 'linear-gradient(to bottom, rgba(0, 0, 0, 0.85) 0%, rgba(0, 0, 0, 0.4) 60%, transparent 100%)',
+    background: 'transparent',
     display: 'flex',
     justifyContent: 'space-between',
     alignItems: 'center',
@@ -908,29 +1059,12 @@ const styles: { [key: string]: React.CSSProperties } = {
     display: 'flex',
     alignItems: 'center',
   },
-  crSpiralWrapper: {
-    width: '32px',
-    height: '32px',
-    borderRadius: '50%',
-    backgroundColor: '#f47521',
-    display: 'flex',
-    alignItems: 'center',
-    justifyContent: 'center',
+  logoShadow: {
+    filter: 'drop-shadow(0 2px 8px rgba(0,0,0,0.8))',
   },
-  crSpiralOuter: {
-    width: '24px',
-    height: '24px',
-    borderRadius: '50%',
-    backgroundColor: '#000000',
-    display: 'flex',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  crSpiralInner: {
-    width: '12px',
-    height: '12px',
-    borderRadius: '50%',
-    backgroundColor: '#f47521',
+  iconShadow: {
+    filter: 'drop-shadow(0 2px 6px rgba(0,0,0,0.9))',
+    cursor: 'pointer',
   },
   headerIcons: {
     display: 'flex',
@@ -939,13 +1073,14 @@ const styles: { [key: string]: React.CSSProperties } = {
   },
   heroBanner: {
     position: 'relative',
-    height: '500px',
+    height: '520px',
     backgroundSize: 'cover',
     backgroundPosition: 'center top',
     display: 'flex',
     flexDirection: 'column',
     justifyContent: 'flex-end',
     padding: '24px 16px',
+    transition: 'background-image 0.4s ease-in-out',
   },
   heroContent: {
     maxWidth: '550px',
@@ -1018,12 +1153,11 @@ const styles: { [key: string]: React.CSSProperties } = {
     gap: '6px',
   },
   dot: {
-    width: '8px',
     height: '4px',
     borderRadius: '2px',
-    backgroundColor: 'rgba(255, 255, 255, 0.3)',
+    cursor: 'pointer',
+    transition: 'all 0.3s ease',
   },
-  // Zone Sections & Rigid 3-Column Grid
   zoneSection: {
     padding: '20px 14px 0',
   },
@@ -1113,7 +1247,6 @@ const styles: { [key: string]: React.CSSProperties } = {
     color: '#666666',
     flexShrink: 0,
   },
-  // My Lists
   myListsContainer: {
     padding: '20px 16px',
   },
@@ -1185,6 +1318,7 @@ const styles: { [key: string]: React.CSSProperties } = {
     fontWeight: 800,
     margin: 0,
   },
+  // Bottom Navigation
   bottomNav: {
     position: 'fixed',
     bottom: 0,
@@ -1351,11 +1485,6 @@ const styles: { [key: string]: React.CSSProperties } = {
     borderBottom: '3px solid #f47521',
     paddingBottom: '8px',
   },
-  tabInactive: {
-    fontSize: '0.9rem',
-    color: '#666666',
-    paddingBottom: '8px',
-  },
   seasonSelectorRow: {
     display: 'flex',
     justifyContent: 'space-between',
@@ -1370,13 +1499,6 @@ const styles: { [key: string]: React.CSSProperties } = {
     fontWeight: 800,
     outline: 'none',
     cursor: 'pointer',
-  },
-  downloadAllRow: {
-    display: 'flex',
-    alignItems: 'center',
-    gap: '6px',
-    fontSize: '0.78rem',
-    color: '#aaaaaa',
   },
   episodeList: {
     display: 'flex',
@@ -1403,17 +1525,6 @@ const styles: { [key: string]: React.CSSProperties } = {
     height: '100%',
     objectFit: 'cover',
   },
-  premiumBadge: {
-    position: 'absolute',
-    top: '4px',
-    left: '4px',
-    backgroundColor: 'rgba(0,0,0,0.7)',
-    color: '#ffc107',
-    fontSize: '0.55rem',
-    fontWeight: 800,
-    padding: '2px 4px',
-    borderRadius: '2px',
-  },
   durationBadge: {
     position: 'absolute',
     bottom: '4px',
@@ -1432,19 +1543,6 @@ const styles: { [key: string]: React.CSSProperties } = {
     fontWeight: 600,
     color: '#ffffff',
     lineHeight: 1.3,
-  },
-  epRightIcons: {
-    display: 'flex',
-    alignItems: 'center',
-    gap: '12px',
-    color: '#888888',
-    paddingRight: '6px',
-  },
-  epDownloadIcon: {
-    fontSize: '1rem',
-  },
-  epMenuIcon: {
-    fontSize: '1.1rem',
   },
   stickyBottomBar: {
     position: 'fixed',
