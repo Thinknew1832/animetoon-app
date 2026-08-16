@@ -92,9 +92,26 @@ export default function Home() {
 
   const seasonsCache = useRef<{ [key: string]: SeasonItem[] }>({});
 
-  // 1. Strict Step-by-Step Back Button Stack
+  // 1. Unified Back Navigation Stack Listener
+  const activeEpisodeRef = useRef(activeEpisode);
+  const showSeasonsPageRef = useRef(showSeasonsPage);
+  const showListModalRef = useRef(showListModal);
+  const selectedAnimeRef = useRef(selectedAnime);
+  const viewAllZoneRef = useRef(viewAllZone);
+  const selectedListCategoryRef = useRef(selectedListCategory);
+  const currentTabRef = useRef(currentTab);
+
   useEffect(() => {
-    // Inject dark theme color meta tag to remove white status bar/strip
+    activeEpisodeRef.current = activeEpisode;
+    showSeasonsPageRef.current = showSeasonsPage;
+    showListModalRef.current = showListModal;
+    selectedAnimeRef.current = selectedAnime;
+    viewAllZoneRef.current = viewAllZone;
+    selectedListCategoryRef.current = selectedListCategory;
+    currentTabRef.current = currentTab;
+  }, [activeEpisode, showSeasonsPage, showListModal, selectedAnime, viewAllZone, selectedListCategory, currentTab]);
+
+  useEffect(() => {
     let meta = document.querySelector('meta[name="theme-color"]');
     if (!meta) {
       meta = document.createElement('meta');
@@ -103,52 +120,54 @@ export default function Home() {
     }
     meta.setAttribute('content', '#000000');
 
-    window.history.replaceState({ depth: 0, view: 'root' }, '');
+    if (!window.history.state) {
+      window.history.replaceState({ depth: 0, view: 'root' }, '');
+    }
 
     const handlePopState = (e: PopStateEvent) => {
-      // Step backwards layer-by-layer
-      if (activeEpisode) {
+      // Step backwards layer-by-layer without reloading root
+      if (activeEpisodeRef.current) {
         setActiveEpisode(null);
         return;
       }
-      if (showSeasonsPage) {
+      if (showSeasonsPageRef.current) {
         setShowSeasonsPage(false);
         return;
       }
-      if (showListModal) {
+      if (showListModalRef.current) {
         setShowListModal(false);
         return;
       }
-      if (selectedAnime) {
+      if (selectedAnimeRef.current) {
         setSelectedAnime(null);
         return;
       }
-      if (viewAllZone) {
+      if (viewAllZoneRef.current) {
         setViewAllZone(null);
         return;
       }
-      if (selectedListCategory) {
+      if (selectedListCategoryRef.current) {
         setSelectedListCategory(null);
         return;
       }
-      if (currentTab !== 'home') {
+      if (currentTabRef.current !== 'home') {
         setCurrentTab('home');
       }
     };
 
     window.addEventListener('popstate', handlePopState);
     return () => window.removeEventListener('popstate', handlePopState);
-  }, [activeEpisode, showSeasonsPage, showListModal, selectedAnime, viewAllZone, selectedListCategory, currentTab]);
+  }, []);
 
   const pushStep = (viewName: string) => {
     window.history.pushState({ view: viewName }, '');
   };
 
-  const goBackStep = () => {
+  const handleBack = () => {
     window.history.back();
   };
 
-  // 2. Local Storage for My Lists with Add / Remove Toggle
+  // 2. Persistent Storage for My Lists
   useEffect(() => {
     try {
       const stored = localStorage.getItem('animetoon_user_lists');
@@ -163,17 +182,15 @@ export default function Home() {
     let updated = { ...savedUserLists };
 
     if (existing && existing.categoryKey === categoryKey) {
-      // If tapped again, remove from list
       delete updated[anime.id];
     } else {
-      // Add or update category
       const today = new Date().toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
       updated[anime.id] = { categoryKey, anime, date: today };
     }
 
     setSavedUserLists(updated);
     localStorage.setItem('animetoon_user_lists', JSON.stringify(updated));
-    goBackStep();
+    handleBack();
   };
 
   const removeAnimeFromListExplicitly = (animeId: string) => {
@@ -181,10 +198,10 @@ export default function Home() {
     delete updated[animeId];
     setSavedUserLists(updated);
     localStorage.setItem('animetoon_user_lists', JSON.stringify(updated));
-    goBackStep();
+    handleBack();
   };
 
-  // 3. Parallel Catalog Fetch with Session Cache
+  // 3. Fast Parallel Catalog Fetch with Dual Caching
   useEffect(() => {
     let isMounted = true;
 
@@ -289,7 +306,7 @@ export default function Home() {
     };
   }, []);
 
-  // 4. Auto-swipe Hero Banner every 8 seconds
+  // 4. Hero Carousel
   const heroAnimes = allAnimes.slice(0, 6);
   useEffect(() => {
     if (heroAnimes.length <= 1) return;
@@ -316,15 +333,15 @@ export default function Home() {
     }
   };
 
-  // 5. Open Anime Details with Cache
+  // 5. Open Anime Details with Natural Sorting
   const openAnimeDetails = async (anime: AnimeItem) => {
     pushStep('detail');
     setSelectedAnime(anime);
     setShowSeasonsPage(false);
+    setSelectedSeasonIndex(0);
 
     if (seasonsCache.current[anime.id]) {
       setSeasons(seasonsCache.current[anime.id]);
-      setSelectedSeasonIndex(0);
       return;
     }
 
@@ -342,6 +359,8 @@ export default function Home() {
       let loadedSeasons: SeasonItem[] = [];
 
       if (seasonFolders.length > 0) {
+        seasonFolders.sort((a, b) => a.name.localeCompare(b.name, undefined, { numeric: true, sensitivity: 'base' }));
+
         loadedSeasons = await Promise.all(
           seasonFolders.map(async (s) => {
             const epRes = await fetch(
@@ -351,16 +370,17 @@ export default function Home() {
             const epFiles: DriveItem[] = (epData.files || []).filter(
               (f: DriveItem) => (f.mimeType && f.mimeType.includes('video')) || f.name.match(/\.(mp4|mkv|webm|avi)$/i)
             );
+            epFiles.sort((a, b) => a.name.localeCompare(b.name, undefined, { numeric: true, sensitivity: 'base' }));
             return { id: s.id, name: s.name, episodes: epFiles };
           })
         );
       } else if (directVideos.length > 0) {
+        directVideos.sort((a, b) => a.name.localeCompare(b.name, undefined, { numeric: true, sensitivity: 'base' }));
         loadedSeasons = [{ id: anime.id, name: 'Season 1', episodes: directVideos }];
       }
 
       seasonsCache.current[anime.id] = loadedSeasons;
       setSeasons(loadedSeasons);
-      setSelectedSeasonIndex(0);
     } catch (err: any) {
       console.error(err);
     } finally {
@@ -368,6 +388,12 @@ export default function Home() {
     }
   };
 
+  const selectSeason = (index: number) => {
+    setSelectedSeasonIndex(index);
+    handleBack();
+  };
+
+  // Video Player Controls
   const resetControlsTimer = () => {
     setShowControls(true);
     if (controlsTimer.current) clearTimeout(controlsTimer.current);
@@ -660,7 +686,7 @@ export default function Home() {
       {viewAllZone && !selectedAnime && (
         <div style={styles.viewAllPage}>
           <header style={styles.subPageHeader}>
-            <button style={styles.subPageBackBtn} onClick={goBackStep}>
+            <button style={styles.subPageBackBtn} onClick={handleBack}>
               ←
             </button>
             <h2 style={styles.subPageTitle}>{viewAllZone.name}</h2>
@@ -695,11 +721,11 @@ export default function Home() {
         </div>
       )}
 
-      {/* ────────────────── 3. MY LISTS DETAIL CATEGORY SCREEN ────────────────── */}
+      {/* ────────────────── 3. MY LISTS CATEGORY SCREEN ────────────────── */}
       {selectedListCategory && !selectedAnime && (
         <div style={styles.viewAllPage}>
           <header style={styles.subPageHeader}>
-            <button style={styles.subPageBackBtn} onClick={goBackStep}>
+            <button style={styles.subPageBackBtn} onClick={handleBack}>
               ←
             </button>
             <h2 style={styles.subPageTitle}>
@@ -750,7 +776,7 @@ export default function Home() {
             }}
           >
             <div style={styles.detailTopBar}>
-              <button style={styles.roundBackBtn} onClick={goBackStep}>
+              <button style={styles.roundBackBtn} onClick={handleBack}>
                 ✕
               </button>
               <div style={styles.headerIcons}>
@@ -760,7 +786,7 @@ export default function Home() {
           </div>
 
           <div style={styles.detailContent}>
-            <div style={styles.awardBadge}>🔥 2026 Most Popular Anime</div>
+            <div style={styles.awardBadge}>🔥 Most Popular Anime</div>
             <h1 style={styles.detailTitle}>{selectedAnime.name}</h1>
 
             <div style={styles.detailMetaRow}>
@@ -813,7 +839,7 @@ export default function Home() {
                 <div style={styles.seasonBarTitleRow}>
                   <span style={styles.seasonDropdownArrow}>▾</span>
                   <span style={styles.seasonBarTitle}>
-                    {seasons[selectedSeasonIndex]?.name.toUpperCase() || 'SEASON 1'}
+                    {seasons[selectedSeasonIndex]?.name || 'SEASON 1'}
                   </span>
                 </div>
                 <span style={styles.seasonBarMenuDots}>⋮</span>
@@ -859,7 +885,7 @@ export default function Home() {
             </div>
           </div>
 
-          {seasons.length > 0 && seasons[0].episodes.length > 0 && (
+          {seasons.length > 0 && seasons[selectedSeasonIndex]?.episodes.length > 0 && (
             <div style={styles.stickyBottomBar}>
               <button
                 style={styles.stickyPlayBtn}
@@ -889,11 +915,11 @@ export default function Home() {
         </div>
       )}
 
-      {/* ────────────────── 5. SEASONS FULL PAGE VIEW ────────────────── */}
+      {/* ────────────────── 5. SEASONS FULL PAGE / SHEET VIEW ────────────────── */}
       {selectedAnime && showSeasonsPage && (
         <div style={styles.seasonsFullPage}>
           <header style={styles.seasonsPageHeader}>
-            <button style={styles.seasonsPageCloseBtn} onClick={goBackStep}>
+            <button style={styles.seasonsPageCloseBtn} onClick={handleBack}>
               ✕
             </button>
             <h2 style={styles.seasonsPageHeaderTitle}>Seasons</h2>
@@ -906,10 +932,7 @@ export default function Home() {
                 <div
                   key={s.id}
                   style={styles.seasonItemRow}
-                  onClick={() => {
-                    setSelectedSeasonIndex(idx);
-                    goBackStep();
-                  }}
+                  onClick={() => selectSeason(idx)}
                 >
                   <span
                     style={{
@@ -932,11 +955,11 @@ export default function Home() {
 
       {/* ────────────────── 6. ADD / REMOVE MY LIST MODAL ────────────────── */}
       {showListModal && selectedAnime && (
-        <div style={styles.modalOverlay} onClick={goBackStep}>
+        <div style={styles.modalOverlay} onClick={handleBack}>
           <div style={styles.listModalContent} onClick={(e) => e.stopPropagation()}>
             <div style={styles.listModalHeader}>
               <h3 style={styles.listModalTitle}>Save to My Lists</h3>
-              <button style={styles.closeBtnText} onClick={goBackStep}>
+              <button style={styles.closeBtnText} onClick={handleBack}>
                 ✕
               </button>
             </div>
@@ -961,7 +984,6 @@ export default function Home() {
                 );
               })}
 
-              {/* Explicit Remove Action */}
               {savedUserLists[selectedAnime.id] && (
                 <button
                   style={styles.removeListBtn}
@@ -1017,7 +1039,7 @@ export default function Home() {
             {showControls && (
               <div style={styles.playerControls}>
                 <div style={styles.playerTopBar}>
-                  <button style={styles.closePlayerBtn} onClick={goBackStep}>
+                  <button style={styles.closePlayerBtn} onClick={handleBack}>
                     ✕
                   </button>
                   <div style={styles.playerVideoTitle}>{activeEpisode.title}</div>
@@ -1140,7 +1162,7 @@ export default function Home() {
   );
 }
 
-// ────────────────── PURE OLED BLACK STYLING ──────────────────
+// ────────────────── OLED PURE BLACK STYLES ──────────────────
 const styles: { [key: string]: React.CSSProperties } = {
   main: {
     backgroundColor: '#000000',
