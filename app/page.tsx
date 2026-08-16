@@ -45,7 +45,7 @@ export default function Home() {
   const ROOT_FOLDER_ID = "1qJu2_VmnxluIFlgARfX-G606W-tCDAlG";
   const PROXY_BASE = "https://animetoon-proxy.thinkingnew.workers.dev";
 
-  // Tab & Navigation State
+  // Tab & View Navigation State
   const [currentTab, setCurrentTab] = useState<TabType>('home');
   const [viewAllZone, setViewAllZone] = useState<ZoneGroup | null>(null);
   const [selectedListCategory, setSelectedListCategory] = useState<string | null>(null);
@@ -71,6 +71,7 @@ export default function Home() {
   const [selectedSeasonIndex, setSelectedSeasonIndex] = useState(0);
   const [showSeasonsPage, setShowSeasonsPage] = useState(false);
   const [loadingDetails, setLoadingDetails] = useState(false);
+  const [detailTab, setDetailTab] = useState<'episodes' | 'music' | 'more'>('episodes');
 
   // Video Player state
   const [activeEpisode, setActiveEpisode] = useState<{ title: string; id: string } | null>(null);
@@ -92,7 +93,7 @@ export default function Home() {
 
   const seasonsCache = useRef<{ [key: string]: SeasonItem[] }>({});
 
-  // 1. Unified Back Navigation Stack Listener
+  // 1. History & Back Navigation Stack
   const activeEpisodeRef = useRef(activeEpisode);
   const showSeasonsPageRef = useRef(showSeasonsPage);
   const showListModalRef = useRef(showListModal);
@@ -124,8 +125,7 @@ export default function Home() {
       window.history.replaceState({ depth: 0, view: 'root' }, '');
     }
 
-    const handlePopState = (e: PopStateEvent) => {
-      // Step backwards layer-by-layer without reloading root
+    const handlePopState = () => {
       if (activeEpisodeRef.current) {
         setActiveEpisode(null);
         return;
@@ -167,7 +167,7 @@ export default function Home() {
     window.history.back();
   };
 
-  // 2. Persistent Storage for My Lists
+  // 2. User List Handlers
   useEffect(() => {
     try {
       const stored = localStorage.getItem('animetoon_user_lists');
@@ -201,7 +201,7 @@ export default function Home() {
     handleBack();
   };
 
-  // 3. Fast Parallel Catalog Fetch with Dual Caching
+  // 3. Catalog Fetch with Session Caching
   useEffect(() => {
     let isMounted = true;
 
@@ -306,7 +306,7 @@ export default function Home() {
     };
   }, []);
 
-  // 4. Hero Carousel
+  // 4. Hero Carousel Handlers
   const heroAnimes = allAnimes.slice(0, 6);
   useEffect(() => {
     if (heroAnimes.length <= 1) return;
@@ -339,6 +339,7 @@ export default function Home() {
     setSelectedAnime(anime);
     setShowSeasonsPage(false);
     setSelectedSeasonIndex(0);
+    setDetailTab('episodes');
 
     if (seasonsCache.current[anime.id]) {
       setSeasons(seasonsCache.current[anime.id]);
@@ -468,7 +469,7 @@ export default function Home() {
 
   return (
     <main style={styles.main}>
-      {/* Center Screen Loader */}
+      {/* Loading Screen */}
       {initialLoading && (
         <div style={styles.centerLoaderBox}>
           <div style={styles.loadingSpinner} />
@@ -476,7 +477,7 @@ export default function Home() {
         </div>
       )}
 
-      {/* ────────────────── 1. MAIN TABS ────────────────── */}
+      {/* ────────────────── 1. MAIN NAVIGATION TABS ────────────────── */}
       {!initialLoading && !selectedAnime && !viewAllZone && !selectedListCategory && (
         <div style={{ paddingBottom: '85px' }}>
           {/* TAB 1: HOME PAGE */}
@@ -564,7 +565,7 @@ export default function Home() {
                 <section key={zone.id} style={styles.zoneSection}>
                   <div style={styles.zoneHeader}>
                     <h3 style={styles.zoneTitle}>{zone.name}</h3>
-                    {zone.animes.length > 3 && (
+                    {zone.animes.length > 2 && (
                       <button
                         style={styles.viewAllBtn}
                         onClick={() => {
@@ -577,27 +578,28 @@ export default function Home() {
                     )}
                   </div>
 
-                  <div style={styles.animeGrid}>
-                    {zone.animes.slice(0, 3).map((anime) => (
+                  {/* 2-COLUMN GRID (Matching Picture 1) */}
+                  <div style={styles.animeGrid2Col}>
+                    {zone.animes.slice(0, 4).map((anime) => (
                       <div
                         key={anime.id}
-                        style={styles.animeCard}
+                        style={styles.animeCard2Col}
                         onClick={() => openAnimeDetails(anime)}
                       >
-                        <div style={styles.posterContainer}>
+                        <div style={styles.posterContainer2Col}>
                           <img
-                            src={anime.thumbnail1 || 'https://images.unsplash.com/photo-1578632767115-351597cf2477?w=500'}
+                            src={anime.thumbnail1 || 'https://images.unsplash.com/photo-1578632767115-351597cf2477?w=600'}
                             alt={anime.name}
                             style={styles.animePoster}
                           />
                         </div>
-                        <div style={styles.cardBottomMeta}>
-                          <div style={styles.animeCardTitle} title={anime.name}>
+                        <div style={styles.cardBottomMeta2Col}>
+                          <div style={styles.animeCardTitle2Col} title={anime.name}>
                             {anime.name}
                           </div>
-                          <div style={styles.cardSubTextRow}>
-                            <span style={styles.dubSubTag}>Dub | Sub</span>
-                            <span style={styles.menuDots}>⋮</span>
+                          <div style={styles.cardSubTextRow2Col}>
+                            <span style={styles.dubSubTag2Col}>Dub | Sub</span>
+                            <span style={styles.menuDots2Col}>⋮</span>
                           </div>
                         </div>
                       </div>
@@ -643,7 +645,7 @@ export default function Home() {
             </div>
           )}
 
-          {/* TAB 3: BROWSE ALL */}
+          {/* TAB 3: BROWSE ALL (2-Column Grid) */}
           {currentTab === 'browse' && (
             <div style={styles.browseContainer}>
               <header style={styles.pageTopBar}>
@@ -651,27 +653,27 @@ export default function Home() {
                 <span style={styles.browseCount}>({allAnimes.length} Titles)</span>
               </header>
 
-              <div style={styles.animeGrid}>
+              <div style={styles.animeGrid2Col}>
                 {allAnimes.map((anime) => (
                   <div
                     key={anime.id}
-                    style={styles.animeCard}
+                    style={styles.animeCard2Col}
                     onClick={() => openAnimeDetails(anime)}
                   >
-                    <div style={styles.posterContainer}>
+                    <div style={styles.posterContainer2Col}>
                       <img
-                        src={anime.thumbnail1 || 'https://images.unsplash.com/photo-1578632767115-351597cf2477?w=500'}
+                        src={anime.thumbnail1 || 'https://images.unsplash.com/photo-1578632767115-351597cf2477?w=600'}
                         alt={anime.name}
                         style={styles.animePoster}
                       />
                     </div>
-                    <div style={styles.cardBottomMeta}>
-                      <div style={styles.animeCardTitle} title={anime.name}>
+                    <div style={styles.cardBottomMeta2Col}>
+                      <div style={styles.animeCardTitle2Col} title={anime.name}>
                         {anime.name}
                       </div>
-                      <div style={styles.cardSubTextRow}>
-                        <span style={styles.dubSubTag}>Dub | Sub</span>
-                        <span style={styles.menuDots}>⋮</span>
+                      <div style={styles.cardSubTextRow2Col}>
+                        <span style={styles.dubSubTag2Col}>Dub | Sub</span>
+                        <span style={styles.menuDots2Col}>⋮</span>
                       </div>
                     </div>
                   </div>
@@ -692,27 +694,27 @@ export default function Home() {
             <h2 style={styles.subPageTitle}>{viewAllZone.name}</h2>
           </header>
 
-          <div style={styles.animeGrid}>
+          <div style={styles.animeGrid2Col}>
             {viewAllZone.animes.map((anime) => (
               <div
                 key={anime.id}
-                style={styles.animeCard}
+                style={styles.animeCard2Col}
                 onClick={() => openAnimeDetails(anime)}
               >
-                <div style={styles.posterContainer}>
+                <div style={styles.posterContainer2Col}>
                   <img
-                    src={anime.thumbnail1 || 'https://images.unsplash.com/photo-1578632767115-351597cf2477?w=500'}
+                    src={anime.thumbnail1 || 'https://images.unsplash.com/photo-1578632767115-351597cf2477?w=600'}
                     alt={anime.name}
                     style={styles.animePoster}
                   />
                 </div>
-                <div style={styles.cardBottomMeta}>
-                  <div style={styles.animeCardTitle} title={anime.name}>
+                <div style={styles.cardBottomMeta2Col}>
+                  <div style={styles.animeCardTitle2Col} title={anime.name}>
                     {anime.name}
                   </div>
-                  <div style={styles.cardSubTextRow}>
-                    <span style={styles.dubSubTag}>Dub | Sub</span>
-                    <span style={styles.menuDots}>⋮</span>
+                  <div style={styles.cardSubTextRow2Col}>
+                    <span style={styles.dubSubTag2Col}>Dub | Sub</span>
+                    <span style={styles.menuDots2Col}>⋮</span>
                   </div>
                 </div>
               </div>
@@ -721,7 +723,7 @@ export default function Home() {
         </div>
       )}
 
-      {/* ────────────────── 3. MY LISTS CATEGORY SCREEN ────────────────── */}
+      {/* ────────────────── 3. MY LISTS DETAIL CATEGORY SCREEN ────────────────── */}
       {selectedListCategory && !selectedAnime && (
         <div style={styles.viewAllPage}>
           <header style={styles.subPageHeader}>
@@ -736,27 +738,27 @@ export default function Home() {
           {getAnimesInCategory(selectedListCategory).length === 0 ? (
             <p style={styles.statusText}>No anime added to this list yet.</p>
           ) : (
-            <div style={styles.animeGrid}>
+            <div style={styles.animeGrid2Col}>
               {getAnimesInCategory(selectedListCategory).map((anime) => (
                 <div
                   key={anime.id}
-                  style={styles.animeCard}
+                  style={styles.animeCard2Col}
                   onClick={() => openAnimeDetails(anime)}
                 >
-                  <div style={styles.posterContainer}>
+                  <div style={styles.posterContainer2Col}>
                     <img
-                      src={anime.thumbnail1 || 'https://images.unsplash.com/photo-1578632767115-351597cf2477?w=500'}
+                      src={anime.thumbnail1 || 'https://images.unsplash.com/photo-1578632767115-351597cf2477?w=600'}
                       alt={anime.name}
                       style={styles.animePoster}
                     />
                   </div>
-                  <div style={styles.cardBottomMeta}>
-                    <div style={styles.animeCardTitle} title={anime.name}>
+                  <div style={styles.cardBottomMeta2Col}>
+                    <div style={styles.animeCardTitle2Col} title={anime.name}>
                       {anime.name}
                     </div>
-                    <div style={styles.cardSubTextRow}>
-                      <span style={styles.dubSubTag}>Dub | Sub</span>
-                      <span style={styles.menuDots}>⋮</span>
+                    <div style={styles.cardSubTextRow2Col}>
+                      <span style={styles.dubSubTag2Col}>Dub | Sub</span>
+                      <span style={styles.menuDots2Col}>⋮</span>
                     </div>
                   </div>
                 </div>
@@ -766,85 +768,146 @@ export default function Home() {
         </div>
       )}
 
-      {/* ────────────────── 4. ANIME DETAIL SCREEN ────────────────── */}
+      {/* ────────────────── 4. ANIME DETAIL SCREEN (Matching Picture 2) ────────────────── */}
       {selectedAnime && !showSeasonsPage && (
         <div style={styles.detailPage}>
+          {/* Top Hero Image Banner */}
           <div
             style={{
-              ...styles.detailHero,
-              backgroundImage: `linear-gradient(to bottom, rgba(0,0,0,0.6) 0%, transparent 40%, #000000 95%), url('${selectedAnime.thumbnail2 || selectedAnime.thumbnail1}')`,
+              ...styles.detailHeroPic2,
+              backgroundImage: `linear-gradient(to bottom, rgba(0,0,0,0.5) 0%, transparent 35%, transparent 60%, #000000 100%), url('${selectedAnime.thumbnail2 || selectedAnime.thumbnail1}')`,
             }}
           >
-            <div style={styles.detailTopBar}>
-              <button style={styles.roundBackBtn} onClick={handleBack}>
+            {/* Top Transparent Action Bar */}
+            <div style={styles.detailTopBarPic2}>
+              <button style={styles.detailHeaderBtn} onClick={handleBack}>
                 ✕
               </button>
-              <div style={styles.headerIcons}>
-                <span style={{ fontSize: '1.4rem', cursor: 'pointer' }}>⋮</span>
+              <div style={styles.detailHeaderRightIcons}>
+                <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#ffffff" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M2 16.1A5 5 0 0 1 5.9 20M2 12.05A9 9 0 0 1 9.95 20M2 8V6a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2h-6" />
+                  <line x1="2" y1="20" x2="2.01" y2="20" />
+                </svg>
+                <span style={{ fontSize: '1.4rem', cursor: 'pointer', lineHeight: 1 }}>⋮</span>
+              </div>
+            </div>
+
+            {/* In-Image Hero Title & Badges */}
+            <div style={styles.inHeroBottomDetails}>
+              <div style={styles.detailMetaRowPic2}>
+                <span style={styles.ageBadgePic2}>A</span>
+                <span>• Dub | Sub • Action, Adventure, Fantasy, Sci-Fi, Shonen</span>
+              </div>
+
+              <div style={styles.ratingRowPic2}>
+                <span style={{ color: '#ffffff', letterSpacing: '2px' }}>★★★★★</span>
+                <span style={{ color: '#dddddd', fontSize: '0.85rem' }}>
+                  Average: <b style={{ color: '#ffffff' }}>4.7</b> (161K) <span style={{ fontSize: '0.75rem' }}>▼</span>
+                </span>
               </div>
             </div>
           </div>
 
-          <div style={styles.detailContent}>
-            <div style={styles.awardBadge}>🔥 Most Popular Anime</div>
-            <h1 style={styles.detailTitle}>{selectedAnime.name}</h1>
-
-            <div style={styles.detailMetaRow}>
-              <span style={styles.ageBadge}>U/A 16+</span>
-              <span>• Dub | Sub • Action, Fantasy, Shonen</span>
-            </div>
-
-            <div style={styles.ratingRow}>
-              <span style={{ color: '#ffffff' }}>★★★★★</span>
-              <span>Average: <b>4.8</b> (450K) ▾</span>
-            </div>
-
-            <div style={styles.detailActionButtons}>
+          <div style={styles.detailBodyContent}>
+            {/* Action Buttons: My List & Share */}
+            <div style={styles.detailActionCenterRow}>
               <div
-                style={styles.actionBtn}
+                style={styles.detailCenterBtn}
                 onClick={() => {
                   pushStep('modal');
                   setShowListModal(true);
                 }}
               >
-                <span style={{ fontSize: '1.2rem' }}>
+                <span style={{ fontSize: '1.4rem', lineHeight: 1 }}>
                   {savedUserLists[selectedAnime.id] ? '✓' : '＋'}
                 </span>
-                <span>
+                <span style={styles.detailCenterBtnLabel}>
                   {savedUserLists[selectedAnime.id]
                     ? LIST_CATEGORIES.find((c) => c.key === savedUserLists[selectedAnime.id].categoryKey)?.label.split(' ')[1] || 'In List'
                     : 'My List'}
                 </span>
               </div>
-            </div>
 
-            <p style={styles.synopsisText}>
-              Stream all episodes with crystal clear audio. Enjoy high performance multi-audio playback directly synced with your cloud library.
-            </p>
-            <span style={styles.moreDetailsText}>More Details</span>
-
-            <div style={styles.tabsRow}>
-              <span style={styles.tabActive}>Episodes</span>
-            </div>
-
-            {/* Season Selector Bar */}
-            {seasons.length > 0 && (
               <div
-                style={styles.seasonBarWrapper}
+                style={styles.detailCenterBtn}
                 onClick={() => {
-                  pushStep('seasons_page');
-                  setShowSeasonsPage(true);
+                  if (navigator.share) {
+                    navigator.share({ title: selectedAnime.name, url: window.location.href }).catch(() => {});
+                  }
                 }}
               >
-                <div style={styles.seasonBarTitleRow}>
-                  <span style={styles.seasonDropdownArrow}>▾</span>
-                  <span style={styles.seasonBarTitle}>
-                    {seasons[selectedSeasonIndex]?.name || 'SEASON 1'}
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#f47521" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round">
+                  <circle cx="18" cy="5" r="3" />
+                  <circle cx="6" cy="12" r="3" />
+                  <circle cx="18" cy="19" r="3" />
+                  <line x1="8.59" y1="13.51" x2="15.42" y2="17.49" />
+                  <line x1="15.41" y1="6.51" x2="8.59" y2="10.49" />
+                </svg>
+                <span style={styles.detailCenterBtnLabel}>Share</span>
+              </div>
+            </div>
+
+            {/* Synopsis Description */}
+            <p style={styles.synopsisTextPic2}>
+              Tokyo is burning, and citizens are mysteriously suffering from spontaneous human combustion throughout the city! Responsible for snuffing out this inferno is the Fire Force, and Shinra is ready to join the fight.
+            </p>
+            <div style={styles.moreDetailsLink}>More Details</div>
+
+            {/* Tab Navigation */}
+            <div style={styles.tabsRowPic2}>
+              <span
+                style={detailTab === 'episodes' ? styles.tabActivePic2 : styles.tabInactivePic2}
+                onClick={() => setDetailTab('episodes')}
+              >
+                Episodes
+              </span>
+              <span
+                style={detailTab === 'music' ? styles.tabActivePic2 : styles.tabInactivePic2}
+                onClick={() => setDetailTab('music')}
+              >
+                Featured Music
+              </span>
+              <span
+                style={detailTab === 'more' ? styles.tabActivePic2 : styles.tabInactivePic2}
+                onClick={() => setDetailTab('more')}
+              >
+                More Like This
+              </span>
+            </div>
+
+            {/* Season Selector Bar (Matching Picture 2) */}
+            {seasons.length > 0 && (
+              <div style={styles.seasonBarPic2}>
+                <div
+                  style={styles.seasonBarTitleRowPic2}
+                  onClick={() => {
+                    pushStep('seasons_page');
+                    setShowSeasonsPage(true);
+                  }}
+                >
+                  <span style={styles.seasonBarCaretPic2}>▼</span>
+                  <span style={styles.seasonBarTextPic2}>
+                    {seasons[selectedSeasonIndex]?.name || 'Season 1'}
                   </span>
                 </div>
-                <span style={styles.seasonBarMenuDots}>⋮</span>
+                <span style={styles.seasonBarMenuIconPic2}>⋮</span>
               </div>
             )}
+
+            {/* Secondary Toolbar (Sort & Download All) */}
+            <div style={styles.filterDownloadToolbar}>
+              <div style={styles.sortFilterBtn}>
+                <span style={{ fontSize: '1.1rem' }}>≡</span>
+              </div>
+              <div style={styles.downloadAllGroup}>
+                <span style={styles.downloadAllText}>Download All</span>
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#ffffff" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+                  <polyline points="7 10 12 15 17 10" />
+                  <line x1="12" y1="15" x2="12" y2="3" />
+                </svg>
+              </div>
+            </div>
 
             {loadingDetails && (
               <div style={{ padding: '30px 0', textAlign: 'center' }}>
@@ -852,7 +915,8 @@ export default function Home() {
               </div>
             )}
 
-            <div style={styles.episodeList}>
+            {/* Episode List */}
+            <div style={styles.episodeListPic2}>
               {seasons[selectedSeasonIndex]?.episodes.map((ep, idx) => {
                 const epTitle = ep.name.replace(/\.[^/.]+$/, '');
                 const epThumb = ep.thumbnailLink
@@ -862,22 +926,31 @@ export default function Home() {
                 return (
                   <div
                     key={ep.id}
-                    style={styles.episodeCard}
+                    style={styles.episodeCardPic2}
                     onClick={() => {
                       pushStep('player');
                       setActiveEpisode({ title: epTitle, id: ep.id });
                       setIsPlaying(true);
                     }}
                   >
-                    <div style={styles.epThumbWrapper}>
-                      <img src={epThumb} alt={ep.name} style={styles.epImage} />
-                      <span style={styles.durationBadge}>24m</span>
+                    <div style={styles.epThumbWrapperPic2}>
+                      <img src={epThumb} alt={ep.name} style={styles.epImagePic2} />
+                      <span style={styles.epDurationBadgePic2}>24m</span>
                     </div>
 
-                    <div style={styles.epInfo}>
-                      <div style={styles.epNumberTitle}>
+                    <div style={styles.epInfoPic2}>
+                      <div style={styles.epTitleTextPic2}>
                         {idx + 1}. {epTitle}
                       </div>
+                    </div>
+
+                    <div style={styles.epActionsPic2}>
+                      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#888888" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                        <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+                        <polyline points="7 10 12 15 17 10" />
+                        <line x1="12" y1="15" x2="12" y2="3" />
+                      </svg>
+                      <span style={{ color: '#888888', fontSize: '1.2rem' }}>⋮</span>
                     </div>
                   </div>
                 );
@@ -885,10 +958,11 @@ export default function Home() {
             </div>
           </div>
 
+          {/* Sticky Bottom Watch Bar */}
           {seasons.length > 0 && seasons[selectedSeasonIndex]?.episodes.length > 0 && (
-            <div style={styles.stickyBottomBar}>
+            <div style={styles.stickyBottomBarPic2}>
               <button
-                style={styles.stickyPlayBtn}
+                style={styles.stickyPlayBtnPic2}
                 onClick={() => {
                   const ep = seasons[selectedSeasonIndex]?.episodes[0];
                   if (ep) {
@@ -897,16 +971,17 @@ export default function Home() {
                   }
                 }}
               >
-                ▶ Continue E1
+                <span style={{ fontSize: '1.2rem' }}>▶</span>
+                <span>Continue E1</span>
               </button>
               <button
-                style={styles.stickyBookmarkBtn}
+                style={styles.stickyBookmarkBtnPic2}
                 onClick={() => {
                   pushStep('modal');
                   setShowListModal(true);
                 }}
               >
-                <svg width="20" height="20" viewBox="0 0 24 24" fill={savedUserLists[selectedAnime.id] ? '#f47521' : 'none'} stroke="#f47521" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                <svg width="22" height="22" viewBox="0 0 24 24" fill={savedUserLists[selectedAnime.id] ? '#f47521' : 'none'} stroke="#f47521" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
                   <path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z" />
                 </svg>
               </button>
@@ -915,7 +990,7 @@ export default function Home() {
         </div>
       )}
 
-      {/* ────────────────── 5. SEASONS FULL PAGE / SHEET VIEW ────────────────── */}
+      {/* ────────────────── 5. SEASONS FULL SHEET MODAL ────────────────── */}
       {selectedAnime && showSeasonsPage && (
         <div style={styles.seasonsFullPage}>
           <header style={styles.seasonsPageHeader}>
@@ -953,7 +1028,7 @@ export default function Home() {
         </div>
       )}
 
-      {/* ────────────────── 6. ADD / REMOVE MY LIST MODAL ────────────────── */}
+      {/* ────────────────── 6. MY LIST MODAL ────────────────── */}
       {showListModal && selectedAnime && (
         <div style={styles.modalOverlay} onClick={handleBack}>
           <div style={styles.listModalContent} onClick={(e) => e.stopPropagation()}>
@@ -1162,7 +1237,7 @@ export default function Home() {
   );
 }
 
-// ────────────────── OLED PURE BLACK STYLES ──────────────────
+// ────────────────── OLED BLACK STYLES ──────────────────
 const styles: { [key: string]: React.CSSProperties } = {
   main: {
     backgroundColor: '#000000',
@@ -1308,16 +1383,16 @@ const styles: { [key: string]: React.CSSProperties } = {
     transition: 'all 0.3s ease',
   },
   zoneSection: {
-    padding: '20px 14px 0',
+    padding: '22px 14px 0',
   },
   zoneHeader: {
     display: 'flex',
     justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: '10px',
+    marginBottom: '12px',
   },
   zoneTitle: {
-    fontSize: '1.15rem',
+    fontSize: '1.2rem',
     fontWeight: 800,
     margin: 0,
     letterSpacing: '0.2px',
@@ -1326,33 +1401,32 @@ const styles: { [key: string]: React.CSSProperties } = {
     background: 'none',
     border: 'none',
     color: '#f47521',
-    fontSize: '0.85rem',
+    fontSize: '0.88rem',
     fontWeight: 700,
     cursor: 'pointer',
   },
-  animeGrid: {
+  // Picture 1: 2-Column Grid Layout
+  animeGrid2Col: {
     display: 'grid',
-    gridTemplateColumns: 'repeat(3, minmax(0, 1fr))',
-    gap: '10px',
+    gridTemplateColumns: 'repeat(2, 1fr)',
+    gap: '14px 12px',
     alignItems: 'start',
     width: '100%',
   },
-  animeCard: {
+  animeCard2Col: {
     display: 'flex',
     flexDirection: 'column',
     cursor: 'pointer',
     width: '100%',
-    maxWidth: '100%',
     overflow: 'hidden',
   },
-  posterContainer: {
+  posterContainer2Col: {
     width: '100%',
     aspectRatio: '2 / 3',
-    maxHeight: '170px',
     borderRadius: '4px',
     overflow: 'hidden',
     backgroundColor: '#161616',
-    border: '1px solid #1f1f1f',
+    border: '1px solid #1c1c1c',
   },
   animePoster: {
     width: '100%',
@@ -1360,42 +1434,289 @@ const styles: { [key: string]: React.CSSProperties } = {
     objectFit: 'cover',
     display: 'block',
   },
-  cardBottomMeta: {
-    marginTop: '6px',
+  cardBottomMeta2Col: {
+    marginTop: '8px',
     display: 'flex',
     flexDirection: 'column',
-    gap: '2px',
+    gap: '3px',
     width: '100%',
   },
-  animeCardTitle: {
-    fontSize: '0.8rem',
+  animeCardTitle2Col: {
+    fontSize: '0.95rem',
     fontWeight: 600,
     color: '#ffffff',
     whiteSpace: 'nowrap',
     overflow: 'hidden',
     textOverflow: 'ellipsis',
-    lineHeight: 1.25,
-    width: '100%',
+    lineHeight: 1.2,
   },
-  cardSubTextRow: {
+  cardSubTextRow2Col: {
     display: 'flex',
     justifyContent: 'space-between',
     alignItems: 'center',
     width: '100%',
   },
-  dubSubTag: {
-    fontSize: '0.7rem',
+  dubSubTag2Col: {
+    fontSize: '0.8rem',
     color: '#777777',
     fontWeight: 500,
-    whiteSpace: 'nowrap',
-    overflow: 'hidden',
-    textOverflow: 'ellipsis',
   },
-  menuDots: {
-    fontSize: '0.85rem',
+  menuDots2Col: {
+    fontSize: '1rem',
     color: '#666666',
     flexShrink: 0,
   },
+  // Picture 2: Detail Page Layout
+  detailPage: {
+    backgroundColor: '#000000',
+    minHeight: '100vh',
+    paddingBottom: '90px',
+  },
+  detailHeroPic2: {
+    position: 'relative',
+    height: '420px',
+    backgroundSize: 'cover',
+    backgroundPosition: 'center top',
+    display: 'flex',
+    flexDirection: 'column',
+    justifyContent: 'space-between',
+    padding: '16px',
+  },
+  detailTopBarPic2: {
+    display: 'flex',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    zIndex: 10,
+  },
+  detailHeaderBtn: {
+    background: 'none',
+    border: 'none',
+    color: '#ffffff',
+    fontSize: '1.5rem',
+    cursor: 'pointer',
+  },
+  detailHeaderRightIcons: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: '18px',
+    color: '#ffffff',
+  },
+  inHeroBottomDetails: {
+    display: 'flex',
+    flexDirection: 'column',
+    gap: '8px',
+    paddingBottom: '8px',
+  },
+  detailMetaRowPic2: {
+    fontSize: '0.82rem',
+    color: '#cccccc',
+    display: 'flex',
+    alignItems: 'center',
+    gap: '6px',
+  },
+  ageBadgePic2: {
+    backgroundColor: '#262626',
+    color: '#e0e0e0',
+    padding: '2px 6px',
+    borderRadius: '3px',
+    fontSize: '0.72rem',
+    fontWeight: 700,
+  },
+  ratingRowPic2: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: '8px',
+  },
+  detailBodyContent: {
+    padding: '16px',
+  },
+  detailActionCenterRow: {
+    display: 'flex',
+    justifyContent: 'center',
+    gap: '48px',
+    margin: '12px 0 20px',
+  },
+  detailCenterBtn: {
+    display: 'flex',
+    flexDirection: 'column',
+    alignItems: 'center',
+    gap: '6px',
+    color: '#f47521',
+    cursor: 'pointer',
+  },
+  detailCenterBtnLabel: {
+    fontSize: '0.8rem',
+    fontWeight: 600,
+  },
+  synopsisTextPic2: {
+    fontSize: '0.88rem',
+    color: '#b0b0b0',
+    lineHeight: 1.45,
+    margin: '0 0 6px 0',
+  },
+  moreDetailsLink: {
+    fontSize: '0.85rem',
+    fontWeight: 700,
+    color: '#f47521',
+    cursor: 'pointer',
+    marginBottom: '22px',
+  },
+  tabsRowPic2: {
+    display: 'flex',
+    borderBottom: '1px solid #1c1c1c',
+    marginBottom: '16px',
+  },
+  tabActivePic2: {
+    fontSize: '0.92rem',
+    fontWeight: 800,
+    color: '#ffffff',
+    borderBottom: '3px solid #f47521',
+    paddingBottom: '10px',
+    marginRight: '24px',
+    cursor: 'pointer',
+  },
+  tabInactivePic2: {
+    fontSize: '0.92rem',
+    fontWeight: 600,
+    color: '#777777',
+    paddingBottom: '10px',
+    marginRight: '24px',
+    cursor: 'pointer',
+  },
+  seasonBarPic2: {
+    display: 'flex',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    padding: '12px 0',
+    cursor: 'pointer',
+  },
+  seasonBarTitleRowPic2: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: '10px',
+  },
+  seasonBarCaretPic2: {
+    fontSize: '0.75rem',
+    color: '#ffffff',
+  },
+  seasonBarTextPic2: {
+    fontSize: '1.15rem',
+    fontWeight: 800,
+    color: '#ffffff',
+  },
+  seasonBarMenuIconPic2: {
+    fontSize: '1.2rem',
+    color: '#888888',
+  },
+  filterDownloadToolbar: {
+    display: 'flex',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    padding: '12px 0 16px',
+  },
+  sortFilterBtn: {
+    color: '#ffffff',
+    cursor: 'pointer',
+  },
+  downloadAllGroup: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: '8px',
+    cursor: 'pointer',
+  },
+  downloadAllText: {
+    fontSize: '0.85rem',
+    fontWeight: 700,
+    color: '#ffffff',
+  },
+  episodeListPic2: {
+    display: 'flex',
+    flexDirection: 'column',
+    gap: '16px',
+  },
+  episodeCardPic2: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: '14px',
+    cursor: 'pointer',
+  },
+  epThumbWrapperPic2: {
+    position: 'relative',
+    width: '135px',
+    height: '80px',
+    borderRadius: '4px',
+    overflow: 'hidden',
+    backgroundColor: '#161616',
+    flexShrink: 0,
+  },
+  epImagePic2: {
+    width: '100%',
+    height: '100%',
+    objectFit: 'cover',
+  },
+  epDurationBadgePic2: {
+    position: 'absolute',
+    bottom: '4px',
+    right: '4px',
+    backgroundColor: 'rgba(0,0,0,0.8)',
+    color: '#ffffff',
+    fontSize: '0.65rem',
+    padding: '2px 4px',
+    borderRadius: '2px',
+  },
+  epInfoPic2: {
+    flex: 1,
+  },
+  epTitleTextPic2: {
+    fontSize: '0.9rem',
+    fontWeight: 600,
+    color: '#ffffff',
+    lineHeight: 1.3,
+  },
+  epActionsPic2: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: '14px',
+  },
+  stickyBottomBarPic2: {
+    position: 'fixed',
+    bottom: 0,
+    left: 0,
+    right: 0,
+    backgroundColor: '#000000',
+    padding: '12px 16px',
+    display: 'flex',
+    gap: '12px',
+    borderTop: '1px solid #1a1a1a',
+    zIndex: 90,
+  },
+  stickyPlayBtnPic2: {
+    flex: 1,
+    backgroundColor: '#f47521',
+    color: '#000000',
+    border: 'none',
+    borderRadius: '28px',
+    padding: '13px',
+    fontSize: '1rem',
+    fontWeight: 800,
+    cursor: 'pointer',
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: '8px',
+  },
+  stickyBookmarkBtnPic2: {
+    width: '50px',
+    height: '50px',
+    borderRadius: '50%',
+    backgroundColor: '#141414',
+    border: '1px solid #282828',
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    cursor: 'pointer',
+  },
+  // My Lists & Modals
   myListsContainer: {
     padding: '20px 16px',
   },
@@ -1547,130 +1868,6 @@ const styles: { [key: string]: React.CSSProperties } = {
     fontWeight: 700,
     cursor: 'pointer',
   },
-  detailPage: {
-    backgroundColor: '#000000',
-    minHeight: '100vh',
-    paddingBottom: '90px',
-  },
-  detailHero: {
-    position: 'relative',
-    height: '300px',
-    backgroundSize: 'cover',
-    backgroundPosition: 'center',
-    padding: '16px',
-  },
-  detailTopBar: {
-    display: 'flex',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-  },
-  roundBackBtn: {
-    width: '36px',
-    height: '36px',
-    borderRadius: '50%',
-    backgroundColor: 'rgba(0,0,0,0.6)',
-    border: 'none',
-    color: '#ffffff',
-    fontSize: '1.2rem',
-    cursor: 'pointer',
-  },
-  detailContent: {
-    padding: '0 16px',
-    marginTop: '-24px',
-  },
-  awardBadge: {
-    fontSize: '0.75rem',
-    color: '#f47521',
-    fontWeight: 700,
-    marginBottom: '6px',
-  },
-  detailTitle: {
-    fontSize: '1.65rem',
-    fontWeight: 900,
-    marginBottom: '6px',
-  },
-  detailMetaRow: {
-    fontSize: '0.78rem',
-    color: '#aaaaaa',
-    display: 'flex',
-    alignItems: 'center',
-    gap: '6px',
-    marginBottom: '8px',
-  },
-  ratingRow: {
-    fontSize: '0.8rem',
-    color: '#888888',
-    display: 'flex',
-    alignItems: 'center',
-    gap: '6px',
-    marginBottom: '16px',
-  },
-  detailActionButtons: {
-    display: 'flex',
-    gap: '32px',
-    marginBottom: '16px',
-  },
-  actionBtn: {
-    display: 'flex',
-    flexDirection: 'column',
-    alignItems: 'center',
-    fontSize: '0.75rem',
-    color: '#f47521',
-    cursor: 'pointer',
-  },
-  synopsisText: {
-    fontSize: '0.85rem',
-    color: '#999999',
-    lineHeight: 1.4,
-    marginBottom: '4px',
-  },
-  moreDetailsText: {
-    fontSize: '0.82rem',
-    color: '#f47521',
-    fontWeight: 700,
-    cursor: 'pointer',
-  },
-  tabsRow: {
-    display: 'flex',
-    borderBottom: '1px solid #1a1a1a',
-    marginTop: '20px',
-    marginBottom: '14px',
-  },
-  tabActive: {
-    fontSize: '0.9rem',
-    fontWeight: 700,
-    color: '#ffffff',
-    borderBottom: '3px solid #f47521',
-    paddingBottom: '8px',
-  },
-  seasonBarWrapper: {
-    display: 'flex',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    padding: '14px 0',
-    borderBottom: '1px solid #141414',
-    marginBottom: '14px',
-    cursor: 'pointer',
-  },
-  seasonBarTitleRow: {
-    display: 'flex',
-    alignItems: 'center',
-    gap: '8px',
-  },
-  seasonDropdownArrow: {
-    fontSize: '1rem',
-    color: '#ffffff',
-  },
-  seasonBarTitle: {
-    fontSize: '1.05rem',
-    fontWeight: 900,
-    color: '#ffffff',
-    letterSpacing: '0.5px',
-  },
-  seasonBarMenuDots: {
-    fontSize: '1.2rem',
-    color: '#888888',
-  },
   seasonsFullPage: {
     position: 'fixed',
     inset: 0,
@@ -1719,83 +1916,6 @@ const styles: { [key: string]: React.CSSProperties } = {
   seasonItemCount: {
     fontSize: '0.85rem',
     color: '#777777',
-  },
-  episodeList: {
-    display: 'flex',
-    flexDirection: 'column',
-    gap: '14px',
-  },
-  episodeCard: {
-    display: 'flex',
-    alignItems: 'center',
-    gap: '12px',
-    cursor: 'pointer',
-  },
-  epThumbWrapper: {
-    position: 'relative',
-    width: '130px',
-    height: '75px',
-    borderRadius: '4px',
-    overflow: 'hidden',
-    backgroundColor: '#161616',
-    flexShrink: 0,
-  },
-  epImage: {
-    width: '100%',
-    height: '100%',
-    objectFit: 'cover',
-  },
-  durationBadge: {
-    position: 'absolute',
-    bottom: '4px',
-    right: '4px',
-    backgroundColor: 'rgba(0,0,0,0.75)',
-    color: '#ffffff',
-    fontSize: '0.62rem',
-    padding: '1px 4px',
-    borderRadius: '2px',
-  },
-  epInfo: {
-    flex: 1,
-  },
-  epNumberTitle: {
-    fontSize: '0.85rem',
-    fontWeight: 600,
-    color: '#ffffff',
-    lineHeight: 1.3,
-  },
-  stickyBottomBar: {
-    position: 'fixed',
-    bottom: 0,
-    left: 0,
-    right: 0,
-    backgroundColor: '#000000',
-    padding: '12px 16px',
-    display: 'flex',
-    gap: '12px',
-    borderTop: '1px solid #1c1c1c',
-    zIndex: 90,
-  },
-  stickyPlayBtn: {
-    flex: 1,
-    backgroundColor: '#f47521',
-    color: '#000000',
-    border: 'none',
-    borderRadius: '24px',
-    padding: '12px',
-    fontSize: '0.95rem',
-    fontWeight: 800,
-    cursor: 'pointer',
-  },
-  stickyBookmarkBtn: {
-    width: '46px',
-    height: '46px',
-    borderRadius: '50%',
-    backgroundColor: '#161616',
-    border: '1px solid #333333',
-    display: 'flex',
-    alignItems: 'center',
-    justifyContent: 'center',
   },
   playerBackdrop: {
     position: 'fixed',
