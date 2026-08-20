@@ -201,7 +201,18 @@ export default function Home() {
     handleBack();
   };
 
-  // 3. Catalog Fetch with Session Caching
+  // Helper to reliably construct thumbnail URLs without CORS/403 blocks
+  const getSafeImage = (fileId?: string, rawUrl?: string) => {
+    if (fileId) {
+      return `${PROXY_BASE}/?id=${fileId}`;
+    }
+    if (rawUrl) {
+      return rawUrl.replace(/=s\d+/, '=s1200');
+    }
+    return 'https://images.unsplash.com/photo-1578632767115-351597cf2477?w=600';
+  };
+
+  // 3. Parallel Catalog Fetch with Session Caching
   useEffect(() => {
     let isMounted = true;
 
@@ -250,11 +261,11 @@ export default function Home() {
                     const imgData = await imgRes.json();
                     const imgFiles: DriveItem[] = imgData.files || [];
 
-                    const t1 = imgFiles.find((f) => f.name.toLowerCase().includes('thumbnail1'));
-                    const t2 = imgFiles.find((f) => f.name.toLowerCase().includes('thumbnail2'));
+                    const t1 = imgFiles.find((f) => f.name.toLowerCase().includes('thumbnail1')) || imgFiles[0];
+                    const t2 = imgFiles.find((f) => f.name.toLowerCase().includes('thumbnail2')) || t1;
 
-                    const thumb1Url = t1?.thumbnailLink ? t1.thumbnailLink.replace(/=s\d+/, '=s1000') : item.thumbnailLink?.replace(/=s\d+/, '=s1000');
-                    const thumb2Url = t2?.thumbnailLink ? t2.thumbnailLink.replace(/=s\d+/, '=s1400') : thumb1Url;
+                    const thumb1Url = t1 ? getSafeImage(t1.id, t1.thumbnailLink) : getSafeImage(undefined, item.thumbnailLink);
+                    const thumb2Url = t2 ? getSafeImage(t2.id, t2.thumbnailLink) : thumb1Url;
 
                     return {
                       id: item.id,
@@ -270,8 +281,8 @@ export default function Home() {
                       name: item.name,
                       zoneId: z.id,
                       zoneName: z.name,
-                      thumbnail1: item.thumbnailLink?.replace(/=s\d+/, '=s1000'),
-                      thumbnail2: item.thumbnailLink?.replace(/=s\d+/, '=s1400'),
+                      thumbnail1: getSafeImage(undefined, item.thumbnailLink),
+                      thumbnail2: getSafeImage(undefined, item.thumbnailLink),
                     };
                   }
                 })
@@ -306,7 +317,7 @@ export default function Home() {
     };
   }, []);
 
-  // 4. Hero Carousel Handlers
+  // 4. Hero Carousel
   const heroAnimes = allAnimes.slice(0, 6);
   useEffect(() => {
     if (heroAnimes.length <= 1) return;
@@ -578,9 +589,9 @@ export default function Home() {
                     )}
                   </div>
 
-                  {/* 2-COLUMN GRID (Matching Picture 1) */}
+                  {/* EXACTLY 2 POSTERS PER ROW ON HOME */}
                   <div style={styles.animeGrid2Col}>
-                    {zone.animes.slice(0, 4).map((anime) => (
+                    {zone.animes.slice(0, 2).map((anime) => (
                       <div
                         key={anime.id}
                         style={styles.animeCard2Col}
@@ -588,9 +599,15 @@ export default function Home() {
                       >
                         <div style={styles.posterContainer2Col}>
                           <img
-                            src={anime.thumbnail1 || 'https://images.unsplash.com/photo-1578632767115-351597cf2477?w=600'}
+                            src={anime.thumbnail1}
                             alt={anime.name}
+                            referrerPolicy="no-referrer"
+                            crossOrigin="anonymous"
                             style={styles.animePoster}
+                            onError={(e) => {
+                              (e.target as HTMLImageElement).src =
+                                'https://images.unsplash.com/photo-1578632767115-351597cf2477?w=600';
+                            }}
                           />
                         </div>
                         <div style={styles.cardBottomMeta2Col}>
@@ -645,7 +662,7 @@ export default function Home() {
             </div>
           )}
 
-          {/* TAB 3: BROWSE ALL (2-Column Grid) */}
+          {/* TAB 3: BROWSE ALL */}
           {currentTab === 'browse' && (
             <div style={styles.browseContainer}>
               <header style={styles.pageTopBar}>
@@ -662,9 +679,15 @@ export default function Home() {
                   >
                     <div style={styles.posterContainer2Col}>
                       <img
-                        src={anime.thumbnail1 || 'https://images.unsplash.com/photo-1578632767115-351597cf2477?w=600'}
+                        src={anime.thumbnail1}
                         alt={anime.name}
+                        referrerPolicy="no-referrer"
+                        crossOrigin="anonymous"
                         style={styles.animePoster}
+                        onError={(e) => {
+                          (e.target as HTMLImageElement).src =
+                            'https://images.unsplash.com/photo-1578632767115-351597cf2477?w=600';
+                        }}
                       />
                     </div>
                     <div style={styles.cardBottomMeta2Col}>
@@ -684,7 +707,7 @@ export default function Home() {
         </div>
       )}
 
-      {/* ────────────────── 2. VIEW ALL ZONE SCREEN ────────────────── */}
+      {/* ────────────────── 2. VIEW ALL ZONE SCREEN (Shows ALL remaining posters) ────────────────── */}
       {viewAllZone && !selectedAnime && (
         <div style={styles.viewAllPage}>
           <header style={styles.subPageHeader}>
@@ -703,9 +726,15 @@ export default function Home() {
               >
                 <div style={styles.posterContainer2Col}>
                   <img
-                    src={anime.thumbnail1 || 'https://images.unsplash.com/photo-1578632767115-351597cf2477?w=600'}
+                    src={anime.thumbnail1}
                     alt={anime.name}
+                    referrerPolicy="no-referrer"
+                    crossOrigin="anonymous"
                     style={styles.animePoster}
+                    onError={(e) => {
+                      (e.target as HTMLImageElement).src =
+                        'https://images.unsplash.com/photo-1578632767115-351597cf2477?w=600';
+                    }}
                   />
                 </div>
                 <div style={styles.cardBottomMeta2Col}>
@@ -747,9 +776,15 @@ export default function Home() {
                 >
                   <div style={styles.posterContainer2Col}>
                     <img
-                      src={anime.thumbnail1 || 'https://images.unsplash.com/photo-1578632767115-351597cf2477?w=600'}
+                      src={anime.thumbnail1}
                       alt={anime.name}
+                      referrerPolicy="no-referrer"
+                      crossOrigin="anonymous"
                       style={styles.animePoster}
+                      onError={(e) => {
+                        (e.target as HTMLImageElement).src =
+                          'https://images.unsplash.com/photo-1578632767115-351597cf2477?w=600';
+                      }}
                     />
                   </div>
                   <div style={styles.cardBottomMeta2Col}>
@@ -768,17 +803,15 @@ export default function Home() {
         </div>
       )}
 
-      {/* ────────────────── 4. ANIME DETAIL SCREEN (Matching Picture 2) ────────────────── */}
+      {/* ────────────────── 4. ANIME DETAIL SCREEN ────────────────── */}
       {selectedAnime && !showSeasonsPage && (
         <div style={styles.detailPage}>
-          {/* Top Hero Image Banner */}
           <div
             style={{
               ...styles.detailHeroPic2,
               backgroundImage: `linear-gradient(to bottom, rgba(0,0,0,0.5) 0%, transparent 35%, transparent 60%, #000000 100%), url('${selectedAnime.thumbnail2 || selectedAnime.thumbnail1}')`,
             }}
           >
-            {/* Top Transparent Action Bar */}
             <div style={styles.detailTopBarPic2}>
               <button style={styles.detailHeaderBtn} onClick={handleBack}>
                 ✕
@@ -792,7 +825,6 @@ export default function Home() {
               </div>
             </div>
 
-            {/* In-Image Hero Title & Badges */}
             <div style={styles.inHeroBottomDetails}>
               <div style={styles.detailMetaRowPic2}>
                 <span style={styles.ageBadgePic2}>A</span>
@@ -809,7 +841,6 @@ export default function Home() {
           </div>
 
           <div style={styles.detailBodyContent}>
-            {/* Action Buttons: My List & Share */}
             <div style={styles.detailActionCenterRow}>
               <div
                 style={styles.detailCenterBtn}
@@ -847,13 +878,11 @@ export default function Home() {
               </div>
             </div>
 
-            {/* Synopsis Description */}
             <p style={styles.synopsisTextPic2}>
               Tokyo is burning, and citizens are mysteriously suffering from spontaneous human combustion throughout the city! Responsible for snuffing out this inferno is the Fire Force, and Shinra is ready to join the fight.
             </p>
             <div style={styles.moreDetailsLink}>More Details</div>
 
-            {/* Tab Navigation */}
             <div style={styles.tabsRowPic2}>
               <span
                 style={detailTab === 'episodes' ? styles.tabActivePic2 : styles.tabInactivePic2}
@@ -875,7 +904,6 @@ export default function Home() {
               </span>
             </div>
 
-            {/* Season Selector Bar (Matching Picture 2) */}
             {seasons.length > 0 && (
               <div style={styles.seasonBarPic2}>
                 <div
@@ -894,7 +922,6 @@ export default function Home() {
               </div>
             )}
 
-            {/* Secondary Toolbar (Sort & Download All) */}
             <div style={styles.filterDownloadToolbar}>
               <div style={styles.sortFilterBtn}>
                 <span style={{ fontSize: '1.1rem' }}>≡</span>
@@ -915,13 +942,10 @@ export default function Home() {
               </div>
             )}
 
-            {/* Episode List */}
             <div style={styles.episodeListPic2}>
               {seasons[selectedSeasonIndex]?.episodes.map((ep, idx) => {
                 const epTitle = ep.name.replace(/\.[^/.]+$/, '');
-                const epThumb = ep.thumbnailLink
-                  ? ep.thumbnailLink.replace(/=s\d+/, '=s500')
-                  : selectedAnime.thumbnail1;
+                const epThumb = ep.id ? getSafeImage(ep.id, ep.thumbnailLink) : selectedAnime.thumbnail1;
 
                 return (
                   <div
@@ -934,7 +958,17 @@ export default function Home() {
                     }}
                   >
                     <div style={styles.epThumbWrapperPic2}>
-                      <img src={epThumb} alt={ep.name} style={styles.epImagePic2} />
+                      <img
+                        src={epThumb}
+                        alt={ep.name}
+                        referrerPolicy="no-referrer"
+                        crossOrigin="anonymous"
+                        style={styles.epImagePic2}
+                        onError={(e) => {
+                          (e.target as HTMLImageElement).src =
+                            'https://images.unsplash.com/photo-1578632767115-351597cf2477?w=600';
+                        }}
+                      />
                       <span style={styles.epDurationBadgePic2}>24m</span>
                     </div>
 
@@ -958,7 +992,6 @@ export default function Home() {
             </div>
           </div>
 
-          {/* Sticky Bottom Watch Bar */}
           {seasons.length > 0 && seasons[selectedSeasonIndex]?.episodes.length > 0 && (
             <div style={styles.stickyBottomBarPic2}>
               <button
@@ -1405,7 +1438,6 @@ const styles: { [key: string]: React.CSSProperties } = {
     fontWeight: 700,
     cursor: 'pointer',
   },
-  // Picture 1: 2-Column Grid Layout
   animeGrid2Col: {
     display: 'grid',
     gridTemplateColumns: 'repeat(2, 1fr)',
@@ -1466,7 +1498,6 @@ const styles: { [key: string]: React.CSSProperties } = {
     color: '#666666',
     flexShrink: 0,
   },
-  // Picture 2: Detail Page Layout
   detailPage: {
     backgroundColor: '#000000',
     minHeight: '100vh',
@@ -1716,7 +1747,6 @@ const styles: { [key: string]: React.CSSProperties } = {
     justifyContent: 'center',
     cursor: 'pointer',
   },
-  // My Lists & Modals
   myListsContainer: {
     padding: '20px 16px',
   },
