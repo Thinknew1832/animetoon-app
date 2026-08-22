@@ -1,307 +1,187 @@
 'use client';
 
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect } from 'react';
 
-interface DriveItem {
+interface DriveFile {
   id: string;
   name: string;
-  mimeType: string;
+  mimeType?: string;
   thumbnailLink?: string;
-}
-
-interface AnimeItem {
-  id: string;
-  name: string;
-  thumbnail1?: string;
-  thumbnail2?: string;
-  zoneId: string;
-  zoneName: string;
-}
-
-interface ZoneGroup {
-  id: string;
-  name: string;
-  animes: AnimeItem[];
-}
-
-interface SeasonItem {
-  id: string;
-  name: string;
-  episodes: DriveItem[];
 }
 
 export default function Home() {
   const GOOGLE_API_KEY = "AIzaSyCwhYhosnTrfHyi6N1C0N8AJl4gT85xg9w";
-  const ROOT_FOLDER_ID = "1qJu2_VmnxluIFlgARfX-G606W-tCDAlG";
+  const FOLDER_ID = "1qJu2_VmnxluIFlgARfX-G606W-tCDAlG";
   const PROXY_BASE = "https://animetoon-proxy.thinkingnew.workers.dev";
 
-  const [zones, setZones] = useState<ZoneGroup[]>([]);
-  const [allAnimes, setAllAnimes] = useState<AnimeItem[]>([]);
-  const [initialLoading, setInitialLoading] = useState(true);
+  const [episodes, setEpisodes] = useState<DriveFile[]>([]);
+  const [filteredEpisodes, setFilteredEpisodes] = useState<DriveFile[]>([]);
+  const [searchQuery, setSearchQuery] = useState('');
+  const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
-
-  const [selectedAnime, setSelectedAnime] = useState<AnimeItem | null>(null);
-  const [seasons, setSeasons] = useState<SeasonItem[]>([]);
-  const [selectedSeasonIndex, setSelectedSeasonIndex] = useState(0);
-  const [loadingDetails, setLoadingDetails] = useState(false);
-
-  // Active Video Modal
-  const [activeEpisode, setActiveEpisode] = useState<{ title: string; id: string } | null>(null);
-  const [showAudioSheet, setShowAudioSheet] = useState(false);
-
-  const seasonsCache = useRef<{ [key: string]: SeasonItem[] }>({});
-
-  const getSafeImage = (fileId?: string, rawUrl?: string) => {
-    if (fileId) return `${PROXY_BASE}/?id=${fileId}`;
-    if (rawUrl) return rawUrl.replace(/=s\d+/, '=s1200');
-    return 'https://images.unsplash.com/photo-1578632767115-351597cf2477?w=600';
-  };
+  const [activeVideo, setActiveVideo] = useState<{ title: string; id: string } | null>(null);
 
   useEffect(() => {
-    async function loadCatalog() {
+    async function fetchDriveVideos() {
       try {
-        setInitialLoading(true);
-        const res = await fetch(
-          `https://www.googleapis.com/drive/v3/files?q='${ROOT_FOLDER_ID}'+in+parents+and+mimeType='application/vnd.google-apps.folder'+and+trashed=false&fields=files(id,name)&orderBy=name&key=${GOOGLE_API_KEY}`
-        );
-        const zoneData = await res.json();
-        const zoneFolders: DriveItem[] = zoneData.files || [];
+        setLoading(true);
+        const endpoint = `https://www.googleapis.com/drive/v3/files?q='${FOLDER_ID}'+in+parents+and+trashed=false&fields=files(id,name,mimeType,thumbnailLink)&key=${GOOGLE_API_KEY}`;
+        const res = await fetch(endpoint);
+        const data = await res.json();
 
-        const zoneResults = await Promise.all(
-          zoneFolders.map(async (z) => {
-            try {
-              const animeRes = await fetch(
-                `https://www.googleapis.com/drive/v3/files?q='${z.id}'+in+parents+and+trashed=false&fields=files(id,name,mimeType,thumbnailLink)&key=${GOOGLE_API_KEY}`
-              );
-              const animeData = await animeRes.json();
-              const files: DriveItem[] = animeData.files || [];
-              const animeFolders = files.filter((f) => f.mimeType === 'application/vnd.google-apps.folder');
+        if (data.error) {
+          setError(`Drive API Error: ${data.error.message}`);
+          setLoading(false);
+          return;
+        }
 
-              const animeList: AnimeItem[] = await Promise.all(
-                animeFolders.map(async (item) => {
-                  try {
-                    const imgRes = await fetch(
-                      `https://www.googleapis.com/drive/v3/files?q='${item.id}'+in+parents+and+mimeType+contains+'image/'+and+trashed=false&fields=files(id,name,thumbnailLink)&key=${GOOGLE_API_KEY}`
-                    );
-                    const imgData = await imgRes.json();
-                    const imgFiles: DriveItem[] = imgData.files || [];
-                    const t1 = imgFiles.find((f) => f.name.toLowerCase().includes('thumbnail1')) || imgFiles[0];
-                    const t2 = imgFiles.find((f) => f.name.toLowerCase().includes('thumbnail2')) || t1;
-
-                    return {
-                      id: item.id,
-                      name: item.name,
-                      zoneId: z.id,
-                      zoneName: z.name,
-                      thumbnail1: t1 ? getSafeImage(t1.id, t1.thumbnailLink) : getSafeImage(undefined, item.thumbnailLink),
-                      thumbnail2: t2 ? getSafeImage(t2.id, t2.thumbnailLink) : getSafeImage(undefined, item.thumbnailLink),
-                    };
-                  } catch {
-                    return {
-                      id: item.id,
-                      name: item.name,
-                      zoneId: z.id,
-                      zoneName: z.name,
-                      thumbnail1: getSafeImage(undefined, item.thumbnailLink),
-                      thumbnail2: getSafeImage(undefined, item.thumbnailLink),
-                    };
-                  }
-                })
-              );
-              return { id: z.id, name: z.name, animes: animeList };
-            } catch {
-              return { id: z.id, name: z.name, animes: [] };
-            }
-          })
+        const videoFiles: DriveFile[] = (data.files || []).filter((f: DriveFile) =>
+          (f.mimeType && f.mimeType.includes("video")) ||
+          f.name.match(/\.(mp4|mkv|webm|avi|mov)$/i)
         );
 
-        const validZones = zoneResults.filter((z) => z.animes.length > 0);
-        setZones(validZones);
-        setAllAnimes(validZones.flatMap((z) => z.animes));
+        setEpisodes(videoFiles);
+        setFilteredEpisodes(videoFiles);
       } catch (err: any) {
-        setError('Failed to load Google Drive catalog.');
+        setError('Failed to connect to Google Drive.');
       } finally {
-        setInitialLoading(false);
+        setLoading(false);
       }
     }
 
-    loadCatalog();
+    fetchDriveVideos();
   }, []);
 
-  const openAnimeDetails = async (anime: AnimeItem) => {
-    setSelectedAnime(anime);
-    setSelectedSeasonIndex(0);
-
-    if (seasonsCache.current[anime.id]) {
-      setSeasons(seasonsCache.current[anime.id]);
-      return;
-    }
-
-    setLoadingDetails(true);
-    try {
-      const res = await fetch(
-        `https://www.googleapis.com/drive/v3/files?q='${anime.id}'+in+parents+and+trashed=false&fields=files(id,name,mimeType,thumbnailLink)&orderBy=name&key=${GOOGLE_API_KEY}`
+  const handleSearch = (query: string) => {
+    setSearchQuery(query);
+    if (!query.trim()) {
+      setFilteredEpisodes(episodes);
+    } else {
+      setFilteredEpisodes(
+        episodes.filter((ep) =>
+          ep.name.toLowerCase().includes(query.toLowerCase())
+        )
       );
-      const data = await res.json();
-      const files: DriveItem[] = data.files || [];
-
-      const seasonFolders = files.filter((f) => f.mimeType === 'application/vnd.google-apps.folder');
-      const directVideos = files.filter((f) => (f.mimeType && f.mimeType.includes('video')) || f.name.match(/\.(mp4|mkv|webm|avi)$/i));
-
-      let loadedSeasons: SeasonItem[] = [];
-
-      if (seasonFolders.length > 0) {
-        seasonFolders.sort((a, b) => a.name.localeCompare(b.name, undefined, { numeric: true, sensitivity: 'base' }));
-        loadedSeasons = await Promise.all(
-          seasonFolders.map(async (s) => {
-            const epRes = await fetch(
-              `https://www.googleapis.com/drive/v3/files?q='${s.id}'+in+parents+and+trashed=false&fields=files(id,name,mimeType,thumbnailLink)&key=${GOOGLE_API_KEY}`
-            );
-            const epData = await epRes.json();
-            const epFiles: DriveItem[] = (epData.files || []).filter(
-              (f: DriveItem) => (f.mimeType && f.mimeType.includes('video')) || f.name.match(/\.(mp4|mkv|webm|avi)$/i)
-            );
-            epFiles.sort((a, b) => a.name.localeCompare(b.name, undefined, { numeric: true, sensitivity: 'base' }));
-            return { id: s.id, name: s.name, episodes: epFiles };
-          })
-        );
-      } else if (directVideos.length > 0) {
-        directVideos.sort((a, b) => a.name.localeCompare(b.name, undefined, { numeric: true, sensitivity: 'base' }));
-        loadedSeasons = [{ id: anime.id, name: 'Season 1', episodes: directVideos }];
-      }
-
-      seasonsCache.current[anime.id] = loadedSeasons;
-      setSeasons(loadedSeasons);
-    } catch (e) {
-      console.error(e);
-    } finally {
-      setLoadingDetails(false);
     }
   };
-
-  const streamUrl = activeEpisode ? `${PROXY_BASE}/?id=${activeEpisode.id}` : '';
-  const currentHero = allAnimes[0];
 
   return (
     <main style={styles.main}>
-      {initialLoading && (
-        <div style={styles.centerLoaderBox}>
-          <div style={styles.loadingSpinner} />
-          <p style={styles.loadingText}>Loading Anime Library...</p>
+      {/* Top Header */}
+      <header style={styles.header}>
+        <div style={styles.logo} onClick={() => window.scrollTo({ top: 0, behavior: 'smooth' })}>
+          <span style={styles.playIcon}>▶</span> ANIMETOON
         </div>
-      )}
+        <div style={styles.searchBox}>
+          <input
+            type="text"
+            placeholder="Search episodes..."
+            value={searchQuery}
+            onChange={(e) => handleSearch(e.target.value)}
+            style={styles.searchInput}
+          />
+        </div>
+      </header>
 
-      {/* Catalog Home */}
-      {!initialLoading && !selectedAnime && (
-        <div style={{ paddingBottom: '40px' }}>
-          {currentHero && (
-            <section
-              style={{
-                ...styles.heroBanner,
-                backgroundImage: `linear-gradient(to bottom, transparent 0%, rgba(0,0,0,0.6) 75%, #000000 100%), url('${currentHero.thumbnail2 || currentHero.thumbnail1}')`,
-              }}
+      {/* Hero Spotlight */}
+      <section style={styles.hero}>
+        <div style={styles.heroContent}>
+          <h1 style={styles.heroTitle}>AnimeToon Stream</h1>
+          <p style={styles.heroDesc}>
+            Instant high-definition streaming directly from your cloud archive.
+          </p>
+          {episodes.length > 0 && (
+            <button
+              style={styles.playBtn}
+              onClick={() =>
+                setActiveVideo({
+                  title: episodes[0].name.replace(/\.[^/.]+$/, ''),
+                  id: episodes[0].id,
+                })
+              }
             >
-              <div style={styles.heroContent}>
-                <h1 style={styles.heroTitle}>{currentHero.name}</h1>
-                <button style={styles.heroWatchBtn} onClick={() => openAnimeDetails(currentHero)}>
-                  ▶ Start Watching
-                </button>
-              </div>
-            </section>
+              ▶ Watch Latest Episode
+            </button>
           )}
-
-          {error && <p style={{ padding: '20px', color: '#ff5555' }}>{error}</p>}
-
-          {zones.map((zone) => (
-            <section key={zone.id} style={styles.zoneSection}>
-              <h3 style={styles.zoneTitle}>{zone.name}</h3>
-              <div style={styles.animeGrid2Col}>
-                {zone.animes.map((anime) => (
-                  <div key={anime.id} style={styles.animeCard2Col} onClick={() => openAnimeDetails(anime)}>
-                    <div style={styles.posterContainer2Col}>
-                      <img src={anime.thumbnail1} alt={anime.name} style={styles.animePoster} />
-                    </div>
-                    <div style={styles.animeCardTitle2Col}>{anime.name}</div>
-                  </div>
-                ))}
-              </div>
-            </section>
-          ))}
         </div>
+      </section>
+
+      {/* Episode Header */}
+      <div style={styles.sectionHeader}>
+        <span style={styles.sectionBar}></span>
+        <h2 style={styles.sectionTitle}>Episodes</h2>
+      </div>
+
+      {loading && <p style={styles.statusText}>Loading anime episodes...</p>}
+      {error && <p style={{ ...styles.statusText, color: '#ff5555' }}>{error}</p>}
+      {!loading && !error && filteredEpisodes.length === 0 && (
+        <p style={styles.statusText}>No video files found in this folder.</p>
       )}
 
-      {/* Episode Detail View */}
-      {selectedAnime && (
-        <div style={styles.detailPage}>
-          <div
-            style={{
-              ...styles.detailHero,
-              backgroundImage: `linear-gradient(to bottom, rgba(0,0,0,0.4) 0%, transparent 40%, #000000 100%), url('${selectedAnime.thumbnail2 || selectedAnime.thumbnail1}')`,
-            }}
-          >
-            <button style={styles.detailBackBtn} onClick={() => setSelectedAnime(null)}>✕</button>
-            <h2 style={{ margin: 0, fontSize: '1.4rem' }}>{selectedAnime.name}</h2>
-          </div>
+      {/* Video Grid */}
+      <div style={styles.grid}>
+        {filteredEpisodes.map((file) => {
+          const titleClean = file.name.replace(/\.[^/.]+$/, '');
+          const thumbnail = file.thumbnailLink
+            ? file.thumbnailLink.replace('=s220', '=s600')
+            : 'https://images.unsplash.com/photo-1578632767115-351597cf2477?w=500';
 
-          <div style={{ padding: '16px' }}>
-            {loadingDetails && <div style={styles.loadingSpinner} />}
-            <div style={styles.episodeList}>
-              {seasons[selectedSeasonIndex]?.episodes.map((ep, idx) => (
-                <div
-                  key={ep.id}
-                  style={styles.epCard}
-                  onClick={() => setActiveEpisode({ title: ep.name.replace(/\.[^/.]+$/, ''), id: ep.id })}
-                >
-                  <img src={getSafeImage(ep.id, ep.thumbnailLink)} alt={ep.name} style={styles.epThumb} />
-                  <div style={styles.epInfo}>
-                    <div style={styles.epTitle}>{idx + 1}. {ep.name.replace(/\.[^/.]+$/, '')}</div>
-                  </div>
+          return (
+            <div
+              key={file.id}
+              style={styles.card}
+              onClick={() => setActiveVideo({ title: titleClean, id: file.id })}
+            >
+              <div style={styles.cardImgWrapper}>
+                <img
+                  src={thumbnail}
+                  alt={file.name}
+                  style={styles.cardImg}
+                  onError={(e) => {
+                    (e.target as HTMLImageElement).src =
+                      'https://images.unsplash.com/photo-1578632767115-351597cf2477?w=500';
+                  }}
+                />
+                <div style={styles.cardHoverOverlay}>
+                  <div style={styles.playCircle}>▶</div>
                 </div>
-              ))}
+              </div>
+              <div style={styles.cardInfo}>
+                <div style={styles.cardTitle} title={titleClean}>
+                  {titleClean}
+                </div>
+                <div style={styles.cardMeta}>
+                  <span>Full HD</span>
+                  <span style={{ color: '#f47521', fontWeight: 600 }}>Stream</span>
+                </div>
+              </div>
             </div>
-          </div>
-        </div>
-      )}
+          );
+        })}
+      </div>
 
-      {/* Fullscreen Video Player Modal */}
-      {activeEpisode && (
-        <div style={styles.playerBackdrop}>
-          <div style={styles.playerWrapper}>
-            <div style={styles.playerHeader}>
-              <div style={styles.playerTitle}>{activeEpisode.title}</div>
-              <button style={styles.closePlayerBtn} onClick={() => setActiveEpisode(null)}>✕</button>
-            </div>
-
-            <div style={styles.videoContainer}>
+      {/* Native Stream Player Modal */}
+      {activeVideo && (
+        <div style={styles.modalBackdrop}>
+          <div style={styles.modalWrapper}>
+            <button style={styles.closeBtn} onClick={() => setActiveVideo(null)}>
+              ✕
+            </button>
+            <div style={styles.playerContainer}>
               <video
-                key={activeEpisode.id}
-                src={streamUrl}
+                key={activeVideo.id}
+                src={`${PROXY_BASE}/?id=${activeVideo.id}`}
                 controls
                 autoPlay
                 playsInline
+                preload="auto"
                 style={styles.videoElement}
-              />
+              >
+                Your browser does not support playing this video format.
+              </video>
             </div>
-
-            {/* Audio Options Bar */}
-            <div style={styles.audioActionContainer}>
-              <div style={styles.audioHint}>
-                <span>Multi-Audio Stream (Telugu / Hindi / Jap / Eng):</span>
-              </div>
-              <div style={styles.audioButtonsRow}>
-                <button
-                  style={styles.vidhubButton}
-                  onClick={() => window.location.href = `vidhub://play?url=${encodeURIComponent(streamUrl)}`}
-                >
-                  🚀 Switch Audio in VidHub[span_14](start_span)[span_14](end_span)
-                </button>
-                <button
-                  style={styles.vlcButton}
-                  onClick={() => window.location.href = `vlc://${streamUrl}`}
-                >
-                  ⚡ Open in VLC[span_15](start_span)[span_15](end_span)
-                </button>
-              </div>
+            <div style={styles.nowPlayingText}>
+              Playing: <span style={{ color: '#fff' }}>{activeVideo.title}</span>
             </div>
           </div>
         </div>
@@ -310,40 +190,222 @@ export default function Home() {
   );
 }
 
+// Crunchyroll-Style Dark & Orange Theme
 const styles: { [key: string]: React.CSSProperties } = {
-  main: { backgroundColor: '#000000', color: '#ffffff', minHeight: '100vh', fontFamily: 'system-ui, sans-serif' },
-  centerLoaderBox: { display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', minHeight: '80vh', gap: '16px' },
-  loadingSpinner: { width: '36px', height: '36px', border: '3px solid rgba(255,255,255,0.2)', borderTopColor: '#f47521', borderRadius: '50%', animation: 'spin 0.8s linear infinite' },
-  loadingText: { fontSize: '0.9rem', color: '#888' },
-  heroBanner: { height: '360px', backgroundSize: 'cover', backgroundPosition: 'center', display: 'flex', flexDirection: 'column', justifyContent: 'flex-end', padding: '20px' },
-  heroContent: { maxWidth: '500px' },
-  heroTitle: { fontSize: '1.8rem', fontWeight: 800, margin: '0 0 10px 0' },
-  heroWatchBtn: { backgroundColor: '#f47521', color: '#000', border: 'none', borderRadius: '24px', padding: '10px 24px', fontSize: '0.95rem', fontWeight: 800, cursor: 'pointer' },
-  zoneSection: { padding: '20px 16px 0' },
-  zoneTitle: { fontSize: '1.15rem', fontWeight: 800, margin: '0 0 12px 0' },
-  animeGrid2Col: { display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: '14px 12px' },
-  animeCard2Col: { display: 'flex', flexDirection: 'column', cursor: 'pointer' },
-  posterContainer2Col: { width: '100%', aspectRatio: '2 / 3', borderRadius: '4px', overflow: 'hidden', backgroundColor: '#141414' },
-  animePoster: { width: '100%', height: '100%', objectFit: 'cover' },
-  animeCardTitle2Col: { marginTop: '6px', fontSize: '0.9rem', fontWeight: 600, color: '#fff', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' },
-  detailPage: { backgroundColor: '#000', minHeight: '100vh', paddingBottom: '40px' },
-  detailHero: { height: '260px', backgroundSize: 'cover', backgroundPosition: 'center', display: 'flex', flexDirection: 'column', justifyContent: 'space-between', padding: '16px' },
-  detailBackBtn: { background: 'none', border: 'none', color: '#fff', fontSize: '1.5rem', cursor: 'pointer', alignSelf: 'flex-start' },
-  episodeList: { display: 'flex', flexDirection: 'column', gap: '12px', marginTop: '16px' },
-  epCard: { display: 'flex', alignItems: 'center', gap: '12px', cursor: 'pointer', backgroundColor: '#0e0e0e', padding: '8px', borderRadius: '6px' },
-  epThumb: { width: '110px', height: '65px', borderRadius: '4px', objectFit: 'cover', backgroundColor: '#181818', flexShrink: 0 },
-  epInfo: { flex: 1 },
-  epTitle: { fontSize: '0.85rem', fontWeight: 600, color: '#fff' },
-  playerBackdrop: { position: 'fixed', inset: 0, backgroundColor: 'rgba(0,0,0,0.95)', zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '12px' },
-  playerWrapper: { width: '100%', maxWidth: '900px', backgroundColor: '#111111', borderRadius: '8px', overflow: 'hidden', border: '1px solid #222222', display: 'flex', flexDirection: 'column' },
-  playerHeader: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '12px 16px', borderBottom: '1px solid #222222' },
-  playerTitle: { fontSize: '0.9rem', fontWeight: 700, color: '#ffffff', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: '85%' },
-  closePlayerBtn: { background: 'none', border: 'none', color: '#ffffff', fontSize: '1.4rem', cursor: 'pointer' },
-  videoContainer: { width: '100%', aspectRatio: '16 / 9', backgroundColor: '#000000' },
-  videoElement: { width: '100%', height: '100%', objectFit: 'contain', display: 'block' },
-  audioActionContainer: { padding: '12px 16px', display: 'flex', flexDirection: 'column', gap: '8px', backgroundColor: '#0c0c0c' },
-  audioHint: { fontSize: '0.8rem', color: '#888888' },
-  audioButtonsRow: { display: 'flex', gap: '8px' },
-  vidhubButton: { flex: 1, backgroundColor: '#f47521', color: '#000000', border: 'none', borderRadius: '4px', padding: '10px', fontSize: '0.85rem', fontWeight: 700, cursor: 'pointer' },
-  vlcButton: { flex: 1, backgroundColor: '#222222', color: '#ffffff', border: '1px solid #333333', borderRadius: '4px', padding: '10px', fontSize: '0.85rem', fontWeight: 600, cursor: 'pointer' },
+  main: {
+    backgroundColor: '#000000',
+    color: '#ffffff',
+    minHeight: '100vh',
+    paddingBottom: '60px',
+    fontFamily: 'system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif',
+  },
+  header: {
+    position: 'sticky',
+    top: 0,
+    zIndex: 100,
+    backgroundColor: '#000000',
+    display: 'flex',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    padding: '16px 20px',
+    borderBottom: '1px solid #1c1c1c',
+  },
+  logo: {
+    fontSize: '1.25rem',
+    fontWeight: 800,
+    color: '#f47521',
+    letterSpacing: '1.5px',
+    cursor: 'pointer',
+    display: 'flex',
+    alignItems: 'center',
+    gap: '8px',
+  },
+  playIcon: {
+    fontSize: '1.1rem',
+  },
+  searchBox: {
+    backgroundColor: '#141414',
+    border: '1px solid #282828',
+    borderRadius: '20px',
+    padding: '6px 14px',
+    display: 'flex',
+    alignItems: 'center',
+  },
+  searchInput: {
+    background: 'transparent',
+    border: 'none',
+    color: '#fff',
+    outline: 'none',
+    fontSize: '0.85rem',
+    width: '130px',
+  },
+  hero: {
+    position: 'relative',
+    height: '320px',
+    background:
+      "linear-gradient(to top, #000000 10%, rgba(0,0,0,0.5) 70%, transparent 100%), url('https://images.unsplash.com/photo-1578632767115-351597cf2477?w=1200') center/cover",
+    display: 'flex',
+    alignItems: 'flex-end',
+    padding: '24px 20px',
+  },
+  heroContent: {
+    maxWidth: '520px',
+  },
+  heroTitle: {
+    fontSize: '1.8rem',
+    fontWeight: 800,
+    marginBottom: '6px',
+  },
+  heroDesc: {
+    color: '#a0a0a0',
+    fontSize: '0.9rem',
+    marginBottom: '14px',
+    lineHeight: 1.4,
+  },
+  playBtn: {
+    backgroundColor: '#f47521',
+    color: '#000',
+    border: 'none',
+    padding: '10px 22px',
+    borderRadius: '4px',
+    fontSize: '0.9rem',
+    fontWeight: 700,
+    cursor: 'pointer',
+  },
+  sectionHeader: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: '10px',
+    padding: '24px 20px 14px',
+  },
+  sectionBar: {
+    width: '4px',
+    height: '20px',
+    backgroundColor: '#f47521',
+    borderRadius: '2px',
+  },
+  sectionTitle: {
+    fontSize: '1.2rem',
+    fontWeight: 700,
+    margin: 0,
+  },
+  statusText: {
+    padding: '20px',
+    color: '#888888',
+    fontSize: '0.95rem',
+  },
+  grid: {
+    display: 'grid',
+    gridTemplateColumns: 'repeat(auto-fill, minmax(160px, 1fr))',
+    gap: '16px',
+    padding: '0 20px',
+  },
+  card: {
+    backgroundColor: '#111111',
+    borderRadius: '6px',
+    overflow: 'hidden',
+    border: '1px solid #1c1c1c',
+    cursor: 'pointer',
+    transition: 'transform 0.15s ease',
+  },
+  cardImgWrapper: {
+    position: 'relative',
+    width: '100%',
+    height: '220px',
+    backgroundColor: '#181818',
+  },
+  cardImg: {
+    width: '100%',
+    height: '100%',
+    objectFit: 'cover',
+    display: 'block',
+  },
+  cardHoverOverlay: {
+    position: 'absolute',
+    inset: 0,
+    backgroundColor: 'rgba(0, 0, 0, 0.3)',
+    display: 'flex',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  playCircle: {
+    width: '40px',
+    height: '40px',
+    borderRadius: '50%',
+    backgroundColor: 'rgba(244, 117, 33, 0.9)',
+    color: '#000',
+    display: 'flex',
+    justifyContent: 'center',
+    alignItems: 'center',
+    fontSize: '1rem',
+    fontWeight: 'bold',
+    paddingLeft: '3px',
+  },
+  cardInfo: {
+    padding: '10px',
+  },
+  cardTitle: {
+    fontSize: '0.88rem',
+    fontWeight: 600,
+    whiteSpace: 'nowrap',
+    overflow: 'hidden',
+    textOverflow: 'ellipsis',
+    marginBottom: '6px',
+  },
+  cardMeta: {
+    fontSize: '0.75rem',
+    color: '#777777',
+    display: 'flex',
+    justifyContent: 'space-between',
+  },
+  modalBackdrop: {
+    position: 'fixed',
+    inset: 0,
+    backgroundColor: 'rgba(0, 0, 0, 0.95)',
+    zIndex: 1000,
+    display: 'flex',
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: '16px',
+  },
+  modalWrapper: {
+    position: 'relative',
+    width: '100%',
+    maxWidth: '920px',
+  },
+  playerContainer: {
+    width: '100%',
+    aspectRatio: '16 / 9',
+    backgroundColor: '#000000',
+    borderRadius: '8px',
+    overflow: 'hidden',
+    border: '1px solid #222222',
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  videoElement: {
+    width: '100%',
+    height: '100%',
+    objectFit: 'contain',
+    display: 'block',
+    outline: 'none',
+  },
+  closeBtn: {
+    position: 'absolute',
+    top: '-40px',
+    right: '0',
+    background: 'none',
+    border: 'none',
+    color: '#ffffff',
+    fontSize: '1.8rem',
+    cursor: 'pointer',
+    lineHeight: 1,
+  },
+  nowPlayingText: {
+    marginTop: '12px',
+    fontSize: '0.95rem',
+    fontWeight: 600,
+    color: '#f47521',
+  },
 };
