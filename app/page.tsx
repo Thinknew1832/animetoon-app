@@ -23,8 +23,8 @@ export default function Home() {
   const cleanTitle = (fileName: string) => {
     return fileName
       .replace(/\.(mp4|mkv|avi|mov|webm)$/i, "")
-      .replace(/\[.*?\]|\(.*?\)/g, "") // Remove bracketed release tags
-      .replace(/@\w+/g, "") // Remove @channel tags
+      .replace(/\[.*?\]|\(.*?\)/g, "")
+      .replace(/@\w+/g, "")
       .trim();
   };
 
@@ -86,19 +86,22 @@ export default function Home() {
         </div>
       </header>
 
-      {/* Main Grid */}
+      {/* Main Content Layout */}
       <main className="max-w-7xl w-full mx-auto p-4 md:p-6 grid grid-cols-1 lg:grid-cols-3 gap-6 flex-1">
-        {/* Video Player */}
+        {/* Video Player Section */}
         <div className="lg:col-span-2 flex flex-col gap-4">
+          {/* Cropped Container */}
           <div className="relative w-full aspect-video bg-black rounded-xl overflow-hidden border border-[#23304a] shadow-2xl">
             {activeEpisode ? (
-              <iframe
-                key={activeEpisode.id}
-                src={`https://drive.google.com/file/d/${activeEpisode.id}/preview`}
-                className="w-full h-full border-0 absolute inset-0"
-                allow="autoplay; fullscreen"
-                allowFullScreen
-              />
+              <div className="relative w-full h-full overflow-hidden">
+                <iframe
+                  key={activeEpisode.id}
+                  src={`https://drive.google.com/file/d/${activeEpisode.id}/preview`}
+                  className="w-full h-[calc(100%+58px)] -mt-[58px] border-0 absolute inset-0"
+                  allow="autoplay; fullscreen"
+                  allowFullScreen
+                />
+              </div>
             ) : (
               <div className="w-full h-full flex items-center justify-center text-slate-500 text-sm">
                 {loading ? "Loading stream..." : "Select an episode"}
@@ -118,7 +121,7 @@ export default function Home() {
           </div>
         </div>
 
-        {/* Sidebar */}
+        {/* Episodes Sidebar */}
         <div className="bg-[#151e32] rounded-xl border border-[#23304a] flex flex-col h-[560px] overflow-hidden">
           <div className="p-4 border-b border-[#23304a] font-semibold text-sm">Episodes</div>
           <div className="overflow-y-auto p-2 flex flex-col gap-1.5 flex-1">
