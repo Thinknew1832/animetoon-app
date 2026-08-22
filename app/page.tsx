@@ -19,6 +19,7 @@ export default function Home() {
   const [activeIndex, setActiveIndex] = useState<number>(0);
   const [loading, setLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
+  const [isPlaying, setIsPlaying] = useState<boolean>(false);
 
   const cleanTitle = (fileName: string) => {
     return fileName
@@ -74,9 +75,15 @@ export default function Home() {
     fetchEpisodes();
   }, []);
 
+  const handleSelect = (ep: Episode, idx: number) => {
+    setActiveEpisode(ep);
+    setActiveIndex(idx);
+    setIsPlaying(false);
+  };
+
   return (
-    <div className="min-h-screen bg-[#0b0f19] text-[#f8fafc] flex flex-col">
-      {/* Navbar */}
+    <div className="min-h-screen bg-[#0b0f19] text-[#f8fafc] flex flex-col font-sans">
+      {/* Header */}
       <header className="bg-[#151e32] border-b border-[#23304a] px-5 py-4 flex justify-between items-center sticky top-0 z-50">
         <div className="text-lg font-bold text-indigo-400 flex items-center gap-2">
           <span>🎬</span> AnimeStream
@@ -88,37 +95,50 @@ export default function Home() {
 
       {/* Main Grid */}
       <main className="max-w-6xl w-full mx-auto p-3 sm:p-5 flex flex-col lg:grid lg:grid-cols-3 gap-5 flex-1">
-        <div className="lg:col-span-2 flex flex-col gap-3">
-          
-          {/* Desktop Emulated Video Container */}
-          <div className="w-full aspect-video bg-black rounded-xl overflow-hidden border border-[#23304a] shadow-lg relative">
-            {activeEpisode ? (
-              <div className="w-[200%] h-[200%] origin-top-left scale-50 absolute inset-0">
-                <iframe
-                  key={activeEpisode.id}
-                  src={`https://drive.google.com/file/d/${activeEpisode.id}/preview`}
-                  className="w-full h-full border-0"
-                  allow="autoplay; fullscreen"
-                  allowFullScreen
-                />
+        {/* Player Section */}
+        <div className="lg:col-span-2 flex flex-col gap-4">
+          <div className="w-full aspect-video bg-black rounded-xl overflow-hidden border border-[#23304a] shadow-2xl relative flex items-center justify-center">
+            {activeEpisode && isPlaying ? (
+              <iframe
+                key={activeEpisode.id}
+                src={`https://drive.google.com/file/d/${activeEpisode.id}/preview`}
+                className="w-full h-full border-0 absolute inset-0"
+                allow="autoplay; fullscreen"
+                allowFullScreen
+              />
+            ) : activeEpisode ? (
+              /* Custom Clean Poster Player UI */
+              <div className="w-full h-full relative flex flex-col items-center justify-center bg-gradient-to-t from-[#0b0f19] to-[#1e293b] p-6 text-center">
+                <button
+                  onClick={() => setIsPlaying(true)}
+                  className="w-16 h-16 bg-indigo-600 hover:bg-indigo-500 text-white rounded-full flex items-center justify-center shadow-xl shadow-indigo-600/40 transition-transform active:scale-95 mb-3"
+                >
+                  <svg className="w-7 h-7 fill-current translate-x-0.5" viewBox="0 0 24 24">
+                    <path d="M8 5v14l11-7z" />
+                  </svg>
+                </button>
+                <div className="text-sm font-semibold text-white truncate max-w-full">
+                  {activeEpisode.displayName}
+                </div>
+                <div className="text-xs text-slate-400 mt-1">Tap to start in-app player</div>
               </div>
             ) : (
-              <div className="w-full h-full flex items-center justify-center text-slate-500 text-sm">
-                {loading ? "Loading stream..." : "Select an episode"}
+              <div className="text-slate-500 text-sm">
+                {loading ? "Loading episodes..." : "Select an episode"}
               </div>
             )}
           </div>
 
-          {/* Episode Info */}
-          <div className="bg-[#151e32] p-4 rounded-xl border border-[#23304a] flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-            <div>
-              <h2 className="text-sm md:text-base font-semibold text-white leading-snug">
+          {/* Episode Info & Fullscreen Quick Action */}
+          <div className="bg-[#151e32] p-4 rounded-xl border border-[#23304a] flex items-center justify-between gap-3">
+            <div className="min-w-0">
+              <h2 className="text-sm md:text-base font-semibold text-white truncate">
                 {activeEpisode ? activeEpisode.displayName : "No Episode Selected"}
               </h2>
-              <p className="text-xs text-slate-400 mt-1">
+              <p className="text-xs text-slate-400 mt-0.5">
                 {activeEpisode
                   ? `Episode ${activeIndex + 1} of ${episodes.length}`
-                  : "Select an episode from the list below."}
+                  : "Choose from the list"}
               </p>
             </div>
 
@@ -127,10 +147,10 @@ export default function Home() {
                 href={`https://drive.google.com/file/d/${activeEpisode.id}/view`}
                 target="_blank"
                 rel="noopener noreferrer"
-                className="px-4 py-2 bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-semibold rounded-lg flex items-center justify-center gap-1.5 transition-all self-start sm:self-auto"
+                className="px-3.5 py-2 bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-semibold rounded-lg flex items-center gap-1.5 whitespace-nowrap transition-all shadow-md"
               >
-                <span>External View</span>
-                <span className="text-[10px]">↗</span>
+                <span>Fullscreen</span>
+                <span>↗</span>
               </a>
             )}
           </div>
@@ -140,7 +160,7 @@ export default function Home() {
         <div className="bg-[#151e32] rounded-xl border border-[#23304a] flex flex-col max-h-[480px] lg:max-h-[580px] overflow-hidden">
           <div className="p-3.5 border-b border-[#23304a] font-semibold text-sm flex justify-between items-center">
             <span>Episodes</span>
-            <span className="text-xs text-slate-400 font-normal">Select below</span>
+            <span className="text-xs text-slate-400 font-normal">Playlist</span>
           </div>
           <div className="overflow-y-auto p-2 flex flex-col gap-1.5 flex-1">
             {error && (
@@ -154,10 +174,7 @@ export default function Home() {
               episodes.map((ep, idx) => (
                 <button
                   key={ep.id}
-                  onClick={() => {
-                    setActiveEpisode(ep);
-                    setActiveIndex(idx);
-                  }}
+                  onClick={() => handleSelect(ep, idx)}
                   className={`flex items-center gap-3 p-2.5 rounded-lg text-left transition-all ${
                     activeIndex === idx
                       ? "bg-indigo-600 text-white font-medium shadow-sm"
