@@ -11,7 +11,6 @@ interface Episode {
 const CONFIG = {
   folderId: "1qJu2_VmnxluIFlgARfX-G606W-tCDAlG",
   apiKey: "AIzaSyCwhYhosnTrfHyi6N1C0N8AJl4gT85xg9w",
-  workerUrl: "https://fragrant-frog-a096.thinkingnew.workers.dev",
 };
 
 export default function Home() {
@@ -22,7 +21,11 @@ export default function Home() {
   const [error, setError] = useState<string | null>(null);
 
   const cleanTitle = (fileName: string) => {
-    return fileName.replace(/\.(mp4|mkv|avi|mov|webm)$/i, "");
+    return fileName
+      .replace(/\.(mp4|mkv|avi|mov|webm)$/i, "")
+      .replace(/\[.*?\]|\(.*?\)/g, "") // Remove bracketed release tags
+      .replace(/@\w+/g, "") // Remove @channel tags
+      .trim();
   };
 
   useEffect(() => {
@@ -47,7 +50,6 @@ export default function Home() {
           return;
         }
 
-        // Sort episodes numerically/alphabetically
         files.sort((a, b) =>
           a.name.localeCompare(b.name, undefined, { numeric: true, sensitivity: "base" })
         );
@@ -86,22 +88,19 @@ export default function Home() {
 
       {/* Main Grid */}
       <main className="max-w-7xl w-full mx-auto p-4 md:p-6 grid grid-cols-1 lg:grid-cols-3 gap-6 flex-1">
-        {/* Video Player Section */}
+        {/* Video Player */}
         <div className="lg:col-span-2 flex flex-col gap-4">
-          <div className="relative w-full aspect-video bg-black rounded-xl overflow-hidden border border-[#23304a] shadow-2xl flex items-center justify-center">
+          <div className="relative w-full aspect-video bg-black rounded-xl overflow-hidden border border-[#23304a] shadow-2xl">
             {activeEpisode ? (
-              <video
+              <iframe
                 key={activeEpisode.id}
-                controls
-                autoPlay
-                playsInline
-                className="w-full h-full object-contain"
-                src={`${CONFIG.workerUrl}/?id=${activeEpisode.id}`}
-              >
-                Your browser does not support HTML5 video playback.
-              </video>
+                src={`https://drive.google.com/file/d/${activeEpisode.id}/preview`}
+                className="w-full h-full border-0 absolute inset-0"
+                allow="autoplay; fullscreen"
+                allowFullScreen
+              />
             ) : (
-              <div className="text-slate-500 text-sm">
+              <div className="w-full h-full flex items-center justify-center text-slate-500 text-sm">
                 {loading ? "Loading stream..." : "Select an episode"}
               </div>
             )}
@@ -114,12 +113,12 @@ export default function Home() {
             <p className="text-sm text-slate-400 mt-1">
               {activeEpisode
                 ? `Playing Episode ${activeIndex + 1} of ${episodes.length}`
-                : "Select an episode from the list to start."}
+                : "Select an episode from the list below."}
             </p>
           </div>
         </div>
 
-        {/* Episodes Sidebar */}
+        {/* Sidebar */}
         <div className="bg-[#151e32] rounded-xl border border-[#23304a] flex flex-col h-[560px] overflow-hidden">
           <div className="p-4 border-b border-[#23304a] font-semibold text-sm">Episodes</div>
           <div className="overflow-y-auto p-2 flex flex-col gap-1.5 flex-1">
