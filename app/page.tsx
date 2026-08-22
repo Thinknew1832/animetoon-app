@@ -11,7 +11,7 @@ interface Episode {
 const CONFIG = {
   folderId: "1qJu2_VmnxluIFlgARfX-G606W-tCDAlG",
   apiKey: "AIzaSyCwhYhosnTrfHyi6N1C0N8AJl4gT85xg9w",
-  workerUrl: "https://animetoon-proxy.thinkingnew.workers.dev",
+  workerUrl: "https://fragrant-frog-a096.thinkingnew.workers.dev",
 };
 
 export default function Home() {
@@ -47,7 +47,7 @@ export default function Home() {
           return;
         }
 
-        // Sort episodes numerically/alphabetically (Episode 1, Episode 2, Episode 10)
+        // Sort episodes numerically/alphabetically
         files.sort((a, b) =>
           a.name.localeCompare(b.name, undefined, { numeric: true, sensitivity: "base" })
         );
@@ -84,9 +84,9 @@ export default function Home() {
         </div>
       </header>
 
-      {/* Player & Playlist Grid */}
+      {/* Main Grid */}
       <main className="max-w-7xl w-full mx-auto p-4 md:p-6 grid grid-cols-1 lg:grid-cols-3 gap-6 flex-1">
-        {/* HTML5 Video Section */}
+        {/* Video Player Section */}
         <div className="lg:col-span-2 flex flex-col gap-4">
           <div className="relative w-full aspect-video bg-black rounded-xl overflow-hidden border border-[#23304a] shadow-2xl flex items-center justify-center">
             {activeEpisode ? (
