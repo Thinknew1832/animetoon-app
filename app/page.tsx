@@ -12,7 +12,6 @@ interface DriveFile {
 export default function Home() {
   const GOOGLE_API_KEY = "AIzaSyCwhYhosnTrfHyi6N1C0N8AJl4gT85xg9w";
   const FOLDER_ID = "1qJu2_VmnxluIFlgARfX-G606W-tCDAlG";
-  const PROXY_BASE = "https://animetoon-proxy.thinkingnew.workers.dev";
 
   const [episodes, setEpisodes] = useState<DriveFile[]>([]);
   const [filteredEpisodes, setFilteredEpisodes] = useState<DriveFile[]>([]);
@@ -65,11 +64,9 @@ export default function Home() {
     }
   };
 
-  const streamUrl = activeVideo ? `${PROXY_BASE}/?id=${activeVideo.id}` : '';
-
   return (
     <main style={styles.main}>
-      {/* Top Header */}
+      {/* Header */}
       <header style={styles.header}>
         <div style={styles.logo} onClick={() => window.scrollTo({ top: 0, behavior: 'smooth' })}>
           <span style={styles.playIcon}>▶</span> ANIMETOON
@@ -77,7 +74,7 @@ export default function Home() {
         <div style={styles.searchBox}>
           <input
             type="text"
-            placeholder="Search episodes..."
+            placeholder="Search anime..."
             value={searchQuery}
             onChange={(e) => handleSearch(e.target.value)}
             style={styles.searchInput}
@@ -85,12 +82,12 @@ export default function Home() {
         </div>
       </header>
 
-      {/* Hero Spotlight */}
+      {/* Hero Banner */}
       <section style={styles.hero}>
         <div style={styles.heroContent}>
           <h1 style={styles.heroTitle}>AnimeToon Stream</h1>
           <p style={styles.heroDesc}>
-            Instant high-definition streaming directly from your cloud archive.
+            Stream high-definition anime directly from your cloud archive.
           </p>
           {episodes.length > 0 && (
             <button
@@ -108,7 +105,7 @@ export default function Home() {
         </div>
       </section>
 
-      {/* Episode Header */}
+      {/* Section Header */}
       <div style={styles.sectionHeader}>
         <span style={styles.sectionBar}></span>
         <h2 style={styles.sectionTitle}>Episodes</h2>
@@ -120,7 +117,7 @@ export default function Home() {
         <p style={styles.statusText}>No video files found in this folder.</p>
       )}
 
-      {/* Video Grid */}
+      {/* Grid */}
       <div style={styles.grid}>
         {filteredEpisodes.map((file) => {
           const titleClean = file.name.replace(/\.[^/.]+$/, '');
@@ -153,7 +150,7 @@ export default function Home() {
                   {titleClean}
                 </div>
                 <div style={styles.cardMeta}>
-                  <span>Multi-Audio</span>
+                  <span>Full HD</span>
                   <span style={{ color: '#f47521', fontWeight: 600 }}>Stream</span>
                 </div>
               </div>
@@ -162,44 +159,23 @@ export default function Home() {
         })}
       </div>
 
-      {/* Responsive Fullscreen Video Player Modal */}
+      {/* Fullscreen Video Modal */}
       {activeVideo && (
-        <div style={styles.modalBackdrop}>
-          <div style={styles.modalWrapper}>
-            <div style={styles.modalTopBar}>
-              <span style={styles.modalTitleText}>{activeVideo.title}</span>
-              <button style={styles.closeBtn} onClick={() => setActiveVideo(null)}>
-                ✕
-              </button>
-            </div>
+        <div style={styles.fullscreenModal}>
+          <div style={styles.topControlBar}>
+            <span style={styles.videoTitle}>{activeVideo.title}</span>
+            <button style={styles.closeBtn} onClick={() => setActiveVideo(null)}>
+              ✕
+            </button>
+          </div>
 
-            <div style={styles.playerContainer}>
-              <iframe
-                src={`https://drive.google.com/file/d/${activeVideo.id}/preview`}
-                allow="autoplay; fullscreen"
-                allowFullScreen
-                style={styles.iframe}
-              />
-            </div>
-
-            {/* External App Launch Bar for Full Hardware Multi-Audio Switching */}
-            <div style={styles.audioActionContainer}>
-              <span style={styles.audioHint}>Switch Audio Tracks (Telugu / Hindi / Jap / Eng):</span>
-              <div style={styles.audioButtonsRow}>
-                <button
-                  style={styles.vidhubButton}
-                  onClick={() => window.location.href = `vidhub://play?url=${encodeURIComponent(streamUrl)}`}
-                >
-                  🚀 VidHub App
-                </button>
-                <button
-                  style={styles.vlcButton}
-                  onClick={() => window.location.href = `vlc://${streamUrl}`}
-                >
-                  ⚡ VLC Player
-                </button>
-              </div>
-            </div>
+          <div style={styles.playerFrameContainer}>
+            <iframe
+              src={`https://drive.google.com/file/d/${activeVideo.id}/preview`}
+              allow="autoplay; fullscreen"
+              allowFullScreen
+              style={styles.responsiveIframe}
+            />
           </div>
         </div>
       )}
@@ -236,9 +212,7 @@ const styles: { [key: string]: React.CSSProperties } = {
     alignItems: 'center',
     gap: '8px',
   },
-  playIcon: {
-    fontSize: '1.1rem',
-  },
+  playIcon: { fontSize: '1.1rem' },
   searchBox: {
     backgroundColor: '#141414',
     border: '1px solid #282828',
@@ -257,21 +231,15 @@ const styles: { [key: string]: React.CSSProperties } = {
   },
   hero: {
     position: 'relative',
-    height: '320px',
+    height: '300px',
     background:
       "linear-gradient(to top, #000000 10%, rgba(0,0,0,0.5) 70%, transparent 100%), url('https://images.unsplash.com/photo-1578632767115-351597cf2477?w=1200') center/cover",
     display: 'flex',
     alignItems: 'flex-end',
     padding: '24px 20px',
   },
-  heroContent: {
-    maxWidth: '520px',
-  },
-  heroTitle: {
-    fontSize: '1.8rem',
-    fontWeight: 800,
-    marginBottom: '6px',
-  },
+  heroContent: { maxWidth: '520px' },
+  heroTitle: { fontSize: '1.8rem', fontWeight: 800, marginBottom: '6px' },
   heroDesc: {
     color: '#a0a0a0',
     fontSize: '0.9rem',
@@ -300,16 +268,8 @@ const styles: { [key: string]: React.CSSProperties } = {
     backgroundColor: '#f47521',
     borderRadius: '2px',
   },
-  sectionTitle: {
-    fontSize: '1.2rem',
-    fontWeight: 700,
-    margin: 0,
-  },
-  statusText: {
-    padding: '20px',
-    color: '#888888',
-    fontSize: '0.95rem',
-  },
+  sectionTitle: { fontSize: '1.2rem', fontWeight: 700, margin: 0 },
+  statusText: { padding: '20px', color: '#888888', fontSize: '0.95rem' },
   grid: {
     display: 'grid',
     gridTemplateColumns: 'repeat(auto-fill, minmax(160px, 1fr))',
@@ -322,7 +282,6 @@ const styles: { [key: string]: React.CSSProperties } = {
     overflow: 'hidden',
     border: '1px solid #1c1c1c',
     cursor: 'pointer',
-    transition: 'transform 0.15s ease',
   },
   cardImgWrapper: {
     position: 'relative',
@@ -357,9 +316,7 @@ const styles: { [key: string]: React.CSSProperties } = {
     fontWeight: 'bold',
     paddingLeft: '3px',
   },
-  cardInfo: {
-    padding: '10px',
-  },
+  cardInfo: { padding: '10px' },
   cardTitle: {
     fontSize: '0.88rem',
     fontWeight: 600,
@@ -374,98 +331,51 @@ const styles: { [key: string]: React.CSSProperties } = {
     display: 'flex',
     justifyContent: 'space-between',
   },
-  modalBackdrop: {
+  fullscreenModal: {
     position: 'fixed',
     inset: 0,
-    backgroundColor: 'rgba(0, 0, 0, 0.95)',
-    zIndex: 1000,
-    display: 'flex',
-    justifyContent: 'center',
-    alignItems: 'center',
-    padding: '12px',
-  },
-  modalWrapper: {
-    position: 'relative',
-    width: '100%',
-    maxWidth: '850px',
-    backgroundColor: '#121214',
-    borderRadius: '10px',
-    overflow: 'hidden',
-    border: '1px solid #282828',
+    backgroundColor: '#000000',
+    zIndex: 9999,
     display: 'flex',
     flexDirection: 'column',
+    justifyContent: 'flex-start',
   },
-  modalTopBar: {
+  topControlBar: {
     display: 'flex',
     justifyContent: 'space-between',
     alignItems: 'center',
     padding: '12px 16px',
-    borderBottom: '1px solid #202020',
+    backgroundColor: '#0a0a0a',
+    borderBottom: '1px solid #1c1c1c',
+    zIndex: 10,
   },
-  modalTitleText: {
+  videoTitle: {
     fontSize: '0.9rem',
     fontWeight: 700,
     color: '#ffffff',
+    maxWidth: '85%',
     whiteSpace: 'nowrap',
     overflow: 'hidden',
     textOverflow: 'ellipsis',
-    maxWidth: '85%',
   },
   closeBtn: {
     background: 'none',
     border: 'none',
-    color: '#888888',
+    color: '#ffffff',
     fontSize: '1.4rem',
     cursor: 'pointer',
-    lineHeight: 1,
   },
-  playerContainer: {
+  playerFrameContainer: {
+    flex: 1,
     width: '100%',
-    aspectRatio: '16 / 9',
+    height: '100%',
     backgroundColor: '#000000',
+    display: 'flex',
   },
-  iframe: {
+  responsiveIframe: {
     width: '100%',
     height: '100%',
     border: 'none',
-    display: 'block',
-  },
-  audioActionContainer: {
-    padding: '14px 16px',
-    display: 'flex',
-    flexDirection: 'column',
-    gap: '8px',
-    backgroundColor: '#0c0c0d',
-    borderTop: '1px solid #202020',
-  },
-  audioHint: {
-    fontSize: '0.78rem',
-    color: '#aaaaaa',
-  },
-  audioButtonsRow: {
-    display: 'flex',
-    gap: '10px',
-  },
-  vidhubButton: {
     flex: 1,
-    backgroundColor: '#f47521',
-    color: '#000000',
-    border: 'none',
-    borderRadius: '4px',
-    padding: '10px',
-    fontSize: '0.82rem',
-    fontWeight: 700,
-    cursor: 'pointer',
-  },
-  vlcButton: {
-    flex: 1,
-    backgroundColor: '#202024',
-    color: '#ffffff',
-    border: '1px solid #333338',
-    borderRadius: '4px',
-    padding: '10px',
-    fontSize: '0.82rem',
-    fontWeight: 600,
-    cursor: 'pointer',
   },
 };
