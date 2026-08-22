@@ -1,411 +1,170 @@
-'use client';
+"use client";
 
-import React, { useState, useEffect } from 'react';
+import { useEffect, useState } from "react";
 
-interface DriveFile {
+interface Episode {
   id: string;
   name: string;
-  mimeType?: string;
-  thumbnailLink?: string;
+  displayName: string;
 }
 
-export default function Home() {
-  const GOOGLE_API_KEY = "AIzaSyCwhYhosnTrfHyi6N1C0N8AJl4gT85xg9w";
-  const FOLDER_ID = "1qJu2_VmnxluIFlgARfX-G606W-tCDAlG";
-  const PROXY_BASE = "https://animetoon-proxy.thinkingnew.workers.dev";
+const CONFIG = {
+  folderId: "1qJu2_VmnxluIFlgARfX-G606W-tCDAlG",
+  apiKey: "AIzaSyCwhYhosnTrfHyi6N1C0N8AJl4gT85xg9w",
+};
 
-  const [episodes, setEpisodes] = useState<DriveFile[]>([]);
-  const [filteredEpisodes, setFilteredEpisodes] = useState<DriveFile[]>([]);
-  const [searchQuery, setSearchQuery] = useState('');
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState('');
-  const [activeVideo, setActiveVideo] = useState<{ title: string; id: string } | null>(null);
+export default function Home() {
+  const [episodes, setEpisodes] = useState<Episode[]>([]);
+  const [activeEpisode, setActiveEpisode] = useState<Episode | null>(null);
+  const [activeIndex, setActiveIndex] = useState<number>(0);
+  const [loading, setLoading] = useState<boolean>(true);
+  const [error, setError] = useState<string | null>(null);
+
+  const cleanTitle = (fileName: string) => {
+    return fileName.replace(/\.(mp4|mkv|avi|mov|webm)$/i, "");
+  };
 
   useEffect(() => {
-    async function fetchDriveVideos() {
+    async function fetchEpisodes() {
+      const query = encodeURIComponent(`'${CONFIG.folderId}' in parents and trashed = false`);
+      const fields = encodeURIComponent("files(id, name, mimeType, size)");
+      const endpoint = `https://www.googleapis.com/drive/v3/files?q=${query}&fields=${fields}&pageSize=1000&key=${CONFIG.apiKey}`;
+
       try {
         setLoading(true);
-        const endpoint = `https://www.googleapis.com/drive/v3/files?q='${FOLDER_ID}'+in+parents+and+trashed=false&fields=files(id,name,mimeType,thumbnailLink)&key=${GOOGLE_API_KEY}`;
         const res = await fetch(endpoint);
-        const data = await res.json();
+        if (!res.ok) {
+          const errData = await res.json().catch(() => ({}));
+          throw new Error(errData.error?.message || `API error: ${res.status}`);
+        }
 
-        if (data.error) {
-          setError(`Drive API Error: ${data.error.message}`);
-          setLoading(false);
+        const data = await res.json();
+        const files: { id: string; name: string }[] = data.files || [];
+
+        if (files.length === 0) {
+          setError("No video files found in the specified folder.");
           return;
         }
 
-        const videoFiles: DriveFile[] = (data.files || []).filter((f: DriveFile) =>
-          (f.mimeType && f.mimeType.includes("video")) ||
-          f.name.match(/\.(mp4|mkv|webm|avi|mov)$/i)
+        // Sort episodes naturally (Episode 1, Episode 2, Episode 10)
+        files.sort((a, b) =>
+          a.name.localeCompare(b.name, undefined, { numeric: true, sensitivity: "base" })
         );
 
-        setEpisodes(videoFiles);
-        setFilteredEpisodes(videoFiles);
+        const parsedEpisodes: Episode[] = files.map((file) => ({
+          id: file.id,
+          name: file.name,
+          displayName: cleanTitle(file.name),
+        }));
+
+        setEpisodes(parsedEpisodes);
+        setActiveEpisode(parsedEpisodes[0]);
+        setActiveIndex(0);
       } catch (err: any) {
-        setError('Failed to connect to Google Drive.');
+        console.error(err);
+        setError(err.message || "Failed to load episodes from Drive.");
       } finally {
         setLoading(false);
       }
     }
 
-    fetchDriveVideos();
+    fetchEpisodes();
   }, []);
 
-  const handleSearch = (query: string) => {
-    setSearchQuery(query);
-    if (!query.trim()) {
-      setFilteredEpisodes(episodes);
-    } else {
-      setFilteredEpisodes(
-        episodes.filter((ep) =>
-          ep.name.toLowerCase().includes(query.toLowerCase())
-        )
-      );
-    }
+  const handleSelectEpisode = (ep: Episode, index: number) => {
+    setActiveEpisode(ep);
+    setActiveIndex(index);
   };
 
   return (
-    <main style={styles.main}>
-      {/* Top Header */}
-      <header style={styles.header}>
-        <div style={styles.logo} onClick={() => window.scrollTo({ top: 0, behavior: 'smooth' })}>
-          <span style={styles.playIcon}>▶</span> ANIMETOON
+    <div className="min-h-screen bg-[#0b0f19] text-[#f8fafc] flex flex-col">
+      {/* Navbar */}
+      <header className="bg-[#151e32] border-b border-[#23304a] px-6 py-4 flex justify-between items-center">
+        <div className="text-xl font-bold text-indigo-500 tracking-wide flex items-center gap-2">
+          <span>🎬</span> AnimeStream
         </div>
-        <div style={styles.searchBox}>
-          <input
-            type="text"
-            placeholder="Search episodes..."
-            value={searchQuery}
-            onChange={(e) => handleSearch(e.target.value)}
-            style={styles.searchInput}
-          />
+        <div className="text-xs px-3 py-1 bg-[#23304a] rounded-full text-slate-400">
+          {loading ? "Connecting to Drive..." : error ? "Error" : "Connected"}
         </div>
       </header>
 
-      {/* Hero Spotlight */}
-      <section style={styles.hero}>
-        <div style={styles.heroContent}>
-          <h1 style={styles.heroTitle}>AnimeToon Stream</h1>
-          <p style={styles.heroDesc}>
-            Instant high-definition streaming directly from your cloud archive.
-          </p>
-          {episodes.length > 0 && (
-            <button
-              style={styles.playBtn}
-              onClick={() =>
-                setActiveVideo({
-                  title: episodes[0].name.replace(/\.[^/.]+$/, ''),
-                  id: episodes[0].id,
-                })
-              }
-            >
-              ▶ Watch Latest Episode
-            </button>
-          )}
-        </div>
-      </section>
-
-      {/* Episode Header */}
-      <div style={styles.sectionHeader}>
-        <span style={styles.sectionBar}></span>
-        <h2 style={styles.sectionTitle}>Episodes</h2>
-      </div>
-
-      {loading && <p style={styles.statusText}>Loading anime episodes...</p>}
-      {error && <p style={{ ...styles.statusText, color: '#ff5555' }}>{error}</p>}
-      {!loading && !error && filteredEpisodes.length === 0 && (
-        <p style={styles.statusText}>No video files found in this folder.</p>
-      )}
-
-      {/* Video Grid */}
-      <div style={styles.grid}>
-        {filteredEpisodes.map((file) => {
-          const titleClean = file.name.replace(/\.[^/.]+$/, '');
-          const thumbnail = file.thumbnailLink
-            ? file.thumbnailLink.replace('=s220', '=s600')
-            : 'https://images.unsplash.com/photo-1578632767115-351597cf2477?w=500';
-
-          return (
-            <div
-              key={file.id}
-              style={styles.card}
-              onClick={() => setActiveVideo({ title: titleClean, id: file.id })}
-            >
-              <div style={styles.cardImgWrapper}>
-                <img
-                  src={thumbnail}
-                  alt={file.name}
-                  style={styles.cardImg}
-                  onError={(e) => {
-                    (e.target as HTMLImageElement).src =
-                      'https://images.unsplash.com/photo-1578632767115-351597cf2477?w=500';
-                  }}
-                />
-                <div style={styles.cardHoverOverlay}>
-                  <div style={styles.playCircle}>▶</div>
-                </div>
+      {/* Main Content Layout */}
+      <main className="max-w-7xl w-full mx-auto p-4 md:p-6 grid grid-cols-1 lg:grid-cols-3 gap-6 flex-1">
+        {/* Video Player Section */}
+        <div className="lg:col-span-2 flex flex-col gap-4">
+          <div className="relative w-full aspect-video bg-black rounded-xl overflow-hidden border border-[#23304a] shadow-2xl">
+            {activeEpisode ? (
+              <iframe
+                src={`https://drive.google.com/file/d/${activeEpisode.id}/preview`}
+                className="w-full h-full border-0"
+                allow="autoplay; fullscreen"
+                allowFullScreen
+              />
+            ) : (
+              <div className="w-full h-full flex items-center justify-center text-slate-500 text-sm">
+                {loading ? "Loading stream..." : "Select an episode"}
               </div>
-              <div style={styles.cardInfo}>
-                <div style={styles.cardTitle} title={titleClean}>
-                  {titleClean}
-                </div>
-                <div style={styles.cardMeta}>
-                  <span>Full HD</span>
-                  <span style={{ color: '#f47521', fontWeight: 600 }}>Stream</span>
-                </div>
-              </div>
-            </div>
-          );
-        })}
-      </div>
+            )}
+          </div>
 
-      {/* Native Stream Player Modal */}
-      {activeVideo && (
-        <div style={styles.modalBackdrop}>
-          <div style={styles.modalWrapper}>
-            <button style={styles.closeBtn} onClick={() => setActiveVideo(null)}>
-              ✕
-            </button>
-            <div style={styles.playerContainer}>
-              <video
-                key={activeVideo.id}
-                src={`${PROXY_BASE}/?id=${activeVideo.id}`}
-                controls
-                autoPlay
-                playsInline
-                preload="auto"
-                style={styles.videoElement}
-              >
-                Your browser does not support playing this video format.
-              </video>
-            </div>
-            <div style={styles.nowPlayingText}>
-              Playing: <span style={{ color: '#fff' }}>{activeVideo.title}</span>
-            </div>
+          <div className="bg-[#151e32] p-5 rounded-xl border border-[#23304a]">
+            <h2 className="text-lg font-semibold text-white">
+              {activeEpisode ? activeEpisode.displayName : "No Episode Selected"}
+            </h2>
+            <p className="text-sm text-slate-400 mt-1">
+              {activeEpisode
+                ? `Now Playing: Episode ${activeIndex + 1} of ${episodes.length}`
+                : "Choose an episode from the playlist."}
+            </p>
           </div>
         </div>
-      )}
-    </main>
+
+        {/* Episode Playlist Sidebar */}
+        <div className="bg-[#151e32] rounded-xl border border-[#23304a] flex flex-col h-[550px] overflow-hidden">
+          <div className="p-4 border-b border-[#23304a] flex justify-between items-center">
+            <span className="font-semibold text-sm">Episodes</span>
+            <span className="text-xs text-slate-400">{episodes.length} items</span>
+          </div>
+
+          <div className="overflow-y-auto p-2 flex flex-col gap-1.5 flex-1 custom-scrollbar">
+            {loading && (
+              <div className="p-6 text-center text-slate-400 text-sm">Loading playlist...</div>
+            )}
+
+            {error && (
+              <div className="p-4 text-center text-red-400 text-xs bg-red-950/30 rounded-lg border border-red-900/50">
+                {error}
+              </div>
+            )}
+
+            {!loading &&
+              !error &&
+              episodes.map((ep, index) => {
+                const isActive = activeIndex === index;
+                return (
+                  <button
+                    key={ep.id}
+                    onClick={() => handleSelectEpisode(ep, index)}
+                    className={`flex items-center gap-3 p-3 rounded-lg text-left transition-all ${
+                      isActive
+                        ? "bg-indigo-600 text-white font-medium shadow-md shadow-indigo-600/30"
+                        : "hover:bg-[#1e293b] text-slate-300"
+                    }`}
+                  >
+                    <span
+                      className={`text-xs font-bold min-w-[20px] ${
+                        isActive ? "text-white" : "text-slate-500"
+                      }`}
+                    >
+                      {index + 1}
+                    </span>
+                    <span className="text-xs md:text-sm truncate">{ep.displayName}</span>
+                  </button>
+                );
+              })}
+          </div>
+        </div>
+      </main>
+    </div>
   );
 }
-
-// Crunchyroll-Style Dark & Orange Theme
-const styles: { [key: string]: React.CSSProperties } = {
-  main: {
-    backgroundColor: '#000000',
-    color: '#ffffff',
-    minHeight: '100vh',
-    paddingBottom: '60px',
-    fontFamily: 'system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif',
-  },
-  header: {
-    position: 'sticky',
-    top: 0,
-    zIndex: 100,
-    backgroundColor: '#000000',
-    display: 'flex',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    padding: '16px 20px',
-    borderBottom: '1px solid #1c1c1c',
-  },
-  logo: {
-    fontSize: '1.25rem',
-    fontWeight: 800,
-    color: '#f47521',
-    letterSpacing: '1.5px',
-    cursor: 'pointer',
-    display: 'flex',
-    alignItems: 'center',
-    gap: '8px',
-  },
-  playIcon: {
-    fontSize: '1.1rem',
-  },
-  searchBox: {
-    backgroundColor: '#141414',
-    border: '1px solid #282828',
-    borderRadius: '20px',
-    padding: '6px 14px',
-    display: 'flex',
-    alignItems: 'center',
-  },
-  searchInput: {
-    background: 'transparent',
-    border: 'none',
-    color: '#fff',
-    outline: 'none',
-    fontSize: '0.85rem',
-    width: '130px',
-  },
-  hero: {
-    position: 'relative',
-    height: '320px',
-    background:
-      "linear-gradient(to top, #000000 10%, rgba(0,0,0,0.5) 70%, transparent 100%), url('https://images.unsplash.com/photo-1578632767115-351597cf2477?w=1200') center/cover",
-    display: 'flex',
-    alignItems: 'flex-end',
-    padding: '24px 20px',
-  },
-  heroContent: {
-    maxWidth: '520px',
-  },
-  heroTitle: {
-    fontSize: '1.8rem',
-    fontWeight: 800,
-    marginBottom: '6px',
-  },
-  heroDesc: {
-    color: '#a0a0a0',
-    fontSize: '0.9rem',
-    marginBottom: '14px',
-    lineHeight: 1.4,
-  },
-  playBtn: {
-    backgroundColor: '#f47521',
-    color: '#000',
-    border: 'none',
-    padding: '10px 22px',
-    borderRadius: '4px',
-    fontSize: '0.9rem',
-    fontWeight: 700,
-    cursor: 'pointer',
-  },
-  sectionHeader: {
-    display: 'flex',
-    alignItems: 'center',
-    gap: '10px',
-    padding: '24px 20px 14px',
-  },
-  sectionBar: {
-    width: '4px',
-    height: '20px',
-    backgroundColor: '#f47521',
-    borderRadius: '2px',
-  },
-  sectionTitle: {
-    fontSize: '1.2rem',
-    fontWeight: 700,
-    margin: 0,
-  },
-  statusText: {
-    padding: '20px',
-    color: '#888888',
-    fontSize: '0.95rem',
-  },
-  grid: {
-    display: 'grid',
-    gridTemplateColumns: 'repeat(auto-fill, minmax(160px, 1fr))',
-    gap: '16px',
-    padding: '0 20px',
-  },
-  card: {
-    backgroundColor: '#111111',
-    borderRadius: '6px',
-    overflow: 'hidden',
-    border: '1px solid #1c1c1c',
-    cursor: 'pointer',
-    transition: 'transform 0.15s ease',
-  },
-  cardImgWrapper: {
-    position: 'relative',
-    width: '100%',
-    height: '220px',
-    backgroundColor: '#181818',
-  },
-  cardImg: {
-    width: '100%',
-    height: '100%',
-    objectFit: 'cover',
-    display: 'block',
-  },
-  cardHoverOverlay: {
-    position: 'absolute',
-    inset: 0,
-    backgroundColor: 'rgba(0, 0, 0, 0.3)',
-    display: 'flex',
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  playCircle: {
-    width: '40px',
-    height: '40px',
-    borderRadius: '50%',
-    backgroundColor: 'rgba(244, 117, 33, 0.9)',
-    color: '#000',
-    display: 'flex',
-    justifyContent: 'center',
-    alignItems: 'center',
-    fontSize: '1rem',
-    fontWeight: 'bold',
-    paddingLeft: '3px',
-  },
-  cardInfo: {
-    padding: '10px',
-  },
-  cardTitle: {
-    fontSize: '0.88rem',
-    fontWeight: 600,
-    whiteSpace: 'nowrap',
-    overflow: 'hidden',
-    textOverflow: 'ellipsis',
-    marginBottom: '6px',
-  },
-  cardMeta: {
-    fontSize: '0.75rem',
-    color: '#777777',
-    display: 'flex',
-    justifyContent: 'space-between',
-  },
-  modalBackdrop: {
-    position: 'fixed',
-    inset: 0,
-    backgroundColor: 'rgba(0, 0, 0, 0.95)',
-    zIndex: 1000,
-    display: 'flex',
-    justifyContent: 'center',
-    alignItems: 'center',
-    padding: '16px',
-  },
-  modalWrapper: {
-    position: 'relative',
-    width: '100%',
-    maxWidth: '920px',
-  },
-  playerContainer: {
-    width: '100%',
-    aspectRatio: '16 / 9',
-    backgroundColor: '#000000',
-    borderRadius: '8px',
-    overflow: 'hidden',
-    border: '1px solid #222222',
-    display: 'flex',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  videoElement: {
-    width: '100%',
-    height: '100%',
-    objectFit: 'contain',
-    display: 'block',
-    outline: 'none',
-  },
-  closeBtn: {
-    position: 'absolute',
-    top: '-40px',
-    right: '0',
-    background: 'none',
-    border: 'none',
-    color: '#ffffff',
-    fontSize: '1.8rem',
-    cursor: 'pointer',
-    lineHeight: 1,
-  },
-  nowPlayingText: {
-    marginTop: '12px',
-    fontSize: '0.95rem',
-    fontWeight: 600,
-    color: '#f47521',
-  },
-};
