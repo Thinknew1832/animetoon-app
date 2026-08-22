@@ -45,10 +45,9 @@ export default function Home() {
   const [selectedSeasonIndex, setSelectedSeasonIndex] = useState(0);
   const [loadingDetails, setLoadingDetails] = useState(false);
 
-  // Active Video State
+  // Active Video Modal
   const [activeEpisode, setActiveEpisode] = useState<{ title: string; id: string } | null>(null);
-  const artContainerRef = useRef<HTMLDivElement | null>(null);
-  const artInstanceRef = useRef<any>(null);
+  const [useIframeFallback, setUseIframeFallback] = useState(false);
 
   const seasonsCache = useRef<{ [key: string]: SeasonItem[] }>({});
 
@@ -58,7 +57,6 @@ export default function Home() {
     return 'https://images.unsplash.com/photo-1578632767115-351597cf2477?w=600';
   };
 
-  // 1. Google Drive Directory Traversal
   useEffect(() => {
     async function loadCatalog() {
       try {
@@ -130,7 +128,6 @@ export default function Home() {
     loadCatalog();
   }, []);
 
-  // 2. Fetch Episodes for Selected Anime
   const openAnimeDetails = async (anime: AnimeItem) => {
     setSelectedAnime(anime);
     setSelectedSeasonIndex(0);
@@ -182,99 +179,10 @@ export default function Home() {
     }
   };
 
-  // 3. Client-Side Demuxer & ArtPlayer Engine
-  useEffect(() => {
-    if (!activeEpisode || !artContainerRef.current) return;
-    let isMounted = true;
-
-    const initPlayer = () => {
-      if (!artContainerRef.current || !(window as any).Artplayer) return;
-
-      if (artInstanceRef.current && typeof artInstanceRef.current.destroy === 'function') {
-        artInstanceRef.current.destroy(false);
-      }
-
-      const streamUrl = `${PROXY_BASE}/?id=${activeEpisode.id}`;
-
-      const art = new (window as any).Artplayer({
-        container: artContainerRef.current,
-        url: streamUrl,
-        title: activeEpisode.title,
-        autoplay: true,
-        autoSize: true,
-        playbackRate: true,
-        aspectRatio: true,
-        setting: true,
-        pip: true,
-        fullscreen: true,
-        fullscreenWeb: true,
-        theme: '#f47521',
-        controls: [
-          {
-            position: 'left',
-            html: '<span style="font-size: 1.4rem; cursor: pointer; padding: 0 10px;">✕</span>',
-            tooltip: 'Close',
-            click: () => setActiveEpisode(null),
-          },
-          {
-            name: 'audio-selector',
-            position: 'right',
-            html: '🎧 Audio',
-            tooltip: 'Switch Audio Track',
-            selector: [{ default: true, html: 'Primary Audio', value: 0 }],
-            onSelect: function (item: any) {
-              const videoEl = art.video as any;
-              if (videoEl.audioTracks && videoEl.audioTracks.length > 0) {
-                for (let i = 0; i < videoEl.audioTracks.length; i++) {
-                  videoEl.audioTracks[i].enabled = (i === item.value);
-                }
-              }
-              return item.html;
-            },
-          },
-        ],
-      });
-
-      // Intercept detected tracks from the container
-      art.on('video:loadedmetadata', () => {
-        const videoEl = art.video as any;
-        if (videoEl.audioTracks && videoEl.audioTracks.length > 1) {
-          const trackList = [];
-          for (let i = 0; i < videoEl.audioTracks.length; i++) {
-            const trk = videoEl.audioTracks[i];
-            trackList.push({
-              default: i === 0,
-              html: trk.label || `Track ${i + 1} (${trk.language || 'Audio'})`,
-              value: i,
-            });
-          }
-          art.controls.update({
-            name: 'audio-selector',
-            selector: trackList,
-          });
-        }
-      });
-
-      artInstanceRef.current = art;
-    };
-
-    if (!(window as any).Artplayer) {
-      const script = document.createElement('script');
-      script.src = 'https://cdn.jsdelivr.net/npm/artplayer/dist/artplayer.js';
-      script.async = true;
-      script.onload = () => { if (isMounted) initPlayer(); };
-      document.body.appendChild(script);
-    } else {
-      initPlayer();
-    }
-
-    return () => {
-      isMounted = false;
-      if (artInstanceRef.current && typeof artInstanceRef.current.destroy === 'function') {
-        artInstanceRef.current.destroy(false);
-      }
-    };
-  }, [activeEpisode]);
+  const startPlayingEpisode = (ep: { title: string; id: string }) => {
+    setActiveEpisode(ep);
+    setUseIframeFallback(false);
+  };
 
   const currentHero = allAnimes[0];
 
@@ -287,7 +195,7 @@ export default function Home() {
         </div>
       )}
 
-      {/* Main Grid View */}
+      {/* Main Grid Screen */}
       {!initialLoading && !selectedAnime && (
         <div style={{ paddingBottom: '40px' }}>
           {currentHero && (
@@ -326,7 +234,7 @@ export default function Home() {
         </div>
       )}
 
-      {/* Episode Detail View */}
+      {/* Detail Screen */}
       {selectedAnime && (
         <div style={styles.detailPage}>
           <div
@@ -346,7 +254,7 @@ export default function Home() {
                 <div
                   key={ep.id}
                   style={styles.epCard}
-                  onClick={() => setActiveEpisode({ title: ep.name.replace(/\.[^/.]+$/, ''), id: ep.id })}
+                  onClick={() => startPlayingEpisode({ title: ep.name.replace(/\.[^/.]+$/, ''), id: ep.id })}
                 >
                   <img src={getSafeImage(ep.id, ep.thumbnailLink)} alt={ep.name} style={styles.epThumb} />
                   <div style={styles.epTitle}>{idx + 1}. {ep.name.replace(/\.[^/.]+$/, '')}</div>
@@ -357,10 +265,37 @@ export default function Home() {
         </div>
       )}
 
-      {/* Fullscreen ArtPlayer Modal */}
+      {/* Reliable Video Player Modal */}
       {activeEpisode && (
         <div style={styles.playerBackdrop}>
-          <div style={styles.playerWrapper} ref={artContainerRef} />
+          <div style={styles.playerWrapper}>
+            <button style={styles.closePlayerBtn} onClick={() => setActiveEpisode(null)}>
+              ✕
+            </button>
+
+            {!useIframeFallback ? (
+              <video
+                key={activeEpisode.id}
+                src={`${PROXY_BASE}/?id=${activeEpisode.id}`}
+                controls
+                autoPlay
+                playsInline
+                onError={() => setUseIframeFallback(true)}
+                style={styles.videoPlayer}
+              />
+            ) : (
+              <iframe
+                src={`https://drive.google.com/file/d/${activeEpisode.id}/preview`}
+                allow="autoplay; fullscreen"
+                allowFullScreen
+                style={styles.videoIframe}
+              />
+            )}
+
+            <div style={styles.nowPlayingBar}>
+              <span>Playing: <b>{activeEpisode.title}</b></span>
+            </div>
+          </div>
         </div>
       )}
     </main>
@@ -390,6 +325,10 @@ const styles: { [key: string]: React.CSSProperties } = {
   epCard: { display: 'flex', alignItems: 'center', gap: '12px', cursor: 'pointer', backgroundColor: '#0e0e0e', padding: '8px', borderRadius: '6px' },
   epThumb: { width: '110px', height: '65px', borderRadius: '4px', objectFit: 'cover', backgroundColor: '#181818', flexShrink: 0 },
   epTitle: { fontSize: '0.85rem', fontWeight: 600, color: '#fff' },
-  playerBackdrop: { position: 'fixed', inset: 0, backgroundColor: '#000', zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center' },
-  playerWrapper: { width: '100%', height: '100%' },
+  playerBackdrop: { position: 'fixed', inset: 0, backgroundColor: 'rgba(0,0,0,0.95)', zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '12px' },
+  playerWrapper: { position: 'relative', width: '100%', maxWidth: '900px', backgroundColor: '#000', borderRadius: '8px', overflow: 'hidden' },
+  closePlayerBtn: { position: 'absolute', top: '10px', right: '10px', zIndex: 10, background: 'rgba(0,0,0,0.7)', border: 'none', color: '#fff', width: '36px', height: '36px', borderRadius: '50%', fontSize: '1.2rem', cursor: 'pointer' },
+  videoPlayer: { width: '100%', aspectRatio: '16 / 9', backgroundColor: '#000', display: 'block' },
+  videoIframe: { width: '100%', aspectRatio: '16 / 9', border: 'none', display: 'block' },
+  nowPlayingBar: { padding: '12px 14px', backgroundColor: '#111', fontSize: '0.85rem', color: '#aaa' },
 };
