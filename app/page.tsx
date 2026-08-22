@@ -12,7 +12,6 @@ interface DriveFile {
 export default function Home() {
   const GOOGLE_API_KEY = "AIzaSyCwhYhosnTrfHyi6N1C0N8AJl4gT85xg9w";
   const FOLDER_ID = "1qJu2_VmnxluIFlgARfX-G606W-tCDAlG";
-  const PROXY_BASE = "https://animetoon-proxy.thinkingnew.workers.dev";
 
   const [episodes, setEpisodes] = useState<DriveFile[]>([]);
   const [filteredEpisodes, setFilteredEpisodes] = useState<DriveFile[]>([]);
@@ -67,7 +66,7 @@ export default function Home() {
 
   return (
     <main style={styles.main}>
-      {/* Header */}
+      {/* Top Navigation */}
       <header style={styles.header}>
         <div style={styles.logo} onClick={() => window.scrollTo({ top: 0, behavior: 'smooth' })}>
           <span style={styles.playIcon}>▶</span> ANIMETOON
@@ -88,7 +87,7 @@ export default function Home() {
         <div style={styles.heroContent}>
           <h1 style={styles.heroTitle}>AnimeToon Stream</h1>
           <p style={styles.heroDesc}>
-            Direct cloud streaming powered by Cloudflare Worker proxy.
+            Cloud streaming archive with instant episode playback.
           </p>
           {episodes.length > 0 && (
             <button
@@ -106,7 +105,7 @@ export default function Home() {
         </div>
       </section>
 
-      {/* Section Header */}
+      {/* Episodes Header */}
       <div style={styles.sectionHeader}>
         <span style={styles.sectionBar}></span>
         <h2 style={styles.sectionTitle}>Episodes</h2>
@@ -118,7 +117,7 @@ export default function Home() {
         <p style={styles.statusText}>No video files found in this folder.</p>
       )}
 
-      {/* Grid */}
+      {/* Episode Grid */}
       <div style={styles.grid}>
         {filteredEpisodes.map((file) => {
           const titleClean = file.name.replace(/\.[^/.]+$/, '');
@@ -151,7 +150,7 @@ export default function Home() {
                   {titleClean}
                 </div>
                 <div style={styles.cardMeta}>
-                  <span>Cloudflare</span>
+                  <span>Full HD</span>
                   <span style={{ color: '#f47521', fontWeight: 600 }}>Stream</span>
                 </div>
               </div>
@@ -160,7 +159,7 @@ export default function Home() {
         })}
       </div>
 
-      {/* Pure Direct Video Player Modal via Cloudflare Proxy */}
+      {/* Fullscreen Transcoded Player Modal */}
       {activeVideo && (
         <div style={styles.fullscreenModal}>
           <div style={styles.topControlBar}>
@@ -171,17 +170,12 @@ export default function Home() {
           </div>
 
           <div style={styles.playerFrameContainer}>
-            <video
-              key={activeVideo.id}
-              src={`${PROXY_BASE}/?id=${activeVideo.id}`}
-              controls
-              autoPlay
-              playsInline
-              preload="auto"
-              style={styles.videoPlayer}
-            >
-              Your browser does not support HTML5 video streaming.
-            </video>
+            <iframe
+              src={`https://drive.google.com/file/d/${activeVideo.id}/preview`}
+              allow="autoplay; fullscreen"
+              allowFullScreen
+              style={styles.responsiveIframe}
+            />
           </div>
         </div>
       )}
@@ -377,14 +371,11 @@ const styles: { [key: string]: React.CSSProperties } = {
     height: '100%',
     backgroundColor: '#000000',
     display: 'flex',
-    alignItems: 'center',
-    justifyContent: 'center',
   },
-  videoPlayer: {
+  responsiveIframe: {
     width: '100%',
     height: '100%',
-    maxHeight: '85vh',
-    objectFit: 'contain',
-    outline: 'none',
+    border: 'none',
+    flex: 1,
   },
 };
