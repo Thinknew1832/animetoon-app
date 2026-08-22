@@ -24,7 +24,7 @@ export default function Home() {
   const artContainerRef = useRef<HTMLDivElement | null>(null);
   const artInstanceRef = useRef<any>(null);
 
-  // 1. Fetch Episodes from Google Drive
+  // 1. Fetch episodes from Google Drive
   useEffect(() => {
     async function fetchDriveVideos() {
       try {
@@ -56,7 +56,7 @@ export default function Home() {
     fetchDriveVideos();
   }, []);
 
-  // 2. Client-Side Demuxing Engine Initialization
+  // 2. Initialize Clean ArtPlayer Engine with Dynamic Audio Track Switcher
   useEffect(() => {
     if (!activeVideo || !artContainerRef.current) return;
     let isMounted = true;
@@ -83,6 +83,10 @@ export default function Home() {
         fullscreen: true,
         fullscreenWeb: true,
         theme: '#f47521',
+        moreVideoAttr: {
+          crossOrigin: 'anonymous',
+          playsInline: true,
+        },
         controls: [
           {
             name: 'audio-selector',
@@ -96,10 +100,10 @@ export default function Home() {
               { html: 'Track 4 (English Dub)', value: 3 },
             ],
             onSelect: function (item: any) {
-              const videoElement = art.video as any;
-              if (videoElement.audioTracks && videoElement.audioTracks.length > 0) {
-                for (let i = 0; i < videoElement.audioTracks.length; i++) {
-                  videoElement.audioTracks[i].enabled = (i === item.value);
+              const video = art.video as any;
+              if (video && video.audioTracks && video.audioTracks.length > 0) {
+                for (let i = 0; i < video.audioTracks.length; i++) {
+                  video.audioTracks[i].enabled = (i === item.value);
                 }
               }
               return item.html;
@@ -108,13 +112,13 @@ export default function Home() {
         ],
       });
 
-      // Scan audio tracks extracted by the browser demuxer
+      // Scan audio tracks extracted from the container
       art.on('video:loadedmetadata', () => {
-        const videoElement = art.video as any;
-        if (videoElement.audioTracks && videoElement.audioTracks.length > 1) {
+        const video = art.video as any;
+        if (video && video.audioTracks && video.audioTracks.length > 1) {
           const trackList = [];
-          for (let i = 0; i < videoElement.audioTracks.length; i++) {
-            const trk = videoElement.audioTracks[i];
+          for (let i = 0; i < video.audioTracks.length; i++) {
+            const trk = video.audioTracks[i];
             trackList.push({
               default: i === 0,
               html: trk.label || `Track ${i + 1} (${trk.language || 'Multi'})`,
@@ -131,12 +135,13 @@ export default function Home() {
       artInstanceRef.current = art;
     };
 
-    // Dynamically load ArtPlayer library
     if (!(window as any).Artplayer) {
       const script = document.createElement('script');
       script.src = 'https://cdn.jsdelivr.net/npm/artplayer/dist/artplayer.js';
       script.async = true;
-      script.onload = () => { if (isMounted) initPlayer(); };
+      script.onload = () => {
+        if (isMounted) initPlayer();
+      };
       document.body.appendChild(script);
     } else {
       initPlayer();
@@ -165,12 +170,15 @@ export default function Home() {
 
   return (
     <main style={styles.main}>
+      {/* Top Navbar */}
       <header style={styles.header}>
-        <div style={styles.logo}>▶ ANIMETOON</div>
+        <div style={styles.logo} onClick={() => window.scrollTo({ top: 0, behavior: 'smooth' })}>
+          <span style={{ color: '#f47521' }}>▶</span> ANIMETOON
+        </div>
         <div style={styles.searchBox}>
           <input
             type="text"
-            placeholder="Search..."
+            placeholder="Search anime..."
             value={searchQuery}
             onChange={(e) => handleSearch(e.target.value)}
             style={styles.searchInput}
@@ -178,7 +186,42 @@ export default function Home() {
         </div>
       </header>
 
-      {/* Episode Grid */}
+      {/* Hero Spotlight */}
+      <section style={styles.hero}>
+        <div style={styles.heroContent}>
+          <h1 style={styles.heroTitle}>AnimeToon Stream</h1>
+          <p style={styles.heroDesc}>
+            Direct in-browser streaming with custom audio track controls.
+          </p>
+          {episodes.length > 0 && (
+            <button
+              style={styles.playBtn}
+              onClick={() =>
+                setActiveVideo({
+                  title: episodes[0].name.replace(/\.[^/.]+$/, ''),
+                  id: episodes[0].id,
+                })
+              }
+            >
+              ▶ Watch Latest Episode
+            </button>
+          )}
+        </div>
+      </section>
+
+      {/* Section Header */}
+      <div style={styles.sectionHeader}>
+        <span style={styles.sectionBar}></span>
+        <h2 style={styles.sectionTitle}>Episodes</h2>
+      </div>
+
+      {loading && <p style={styles.statusText}>Loading anime episodes...</p>}
+      {error && <p style={{ ...styles.statusText, color: '#ff5555' }}>{error}</p>}
+      {!loading && !error && filteredEpisodes.length === 0 && (
+        <p style={styles.statusText}>No video files found.</p>
+      )}
+
+      {/* 2-Column Responsive Episode Grid */}
       <div style={styles.grid}>
         {filteredEpisodes.map((file) => {
           const titleClean = file.name.replace(/\.[^/.]+$/, '');
@@ -192,9 +235,24 @@ export default function Home() {
               style={styles.card}
               onClick={() => setActiveVideo({ title: titleClean, id: file.id })}
             >
-              <img src={thumbnail} alt={file.name} style={styles.cardImg} />
+              <div style={styles.cardImgWrapper}>
+                <img
+                  src={thumbnail}
+                  alt={file.name}
+                  style={styles.cardImg}
+                  onError={(e) => {
+                    (e.target as HTMLImageElement).src =
+                      'https://images.unsplash.com/photo-1578632767115-351597cf2477?w=500';
+                  }}
+                />
+                <div style={styles.cardHoverOverlay}>
+                  <div style={styles.playCircle}>▶</div>
+                </div>
+              </div>
               <div style={styles.cardInfo}>
-                <div style={styles.cardTitle}>{titleClean}</div>
+                <div style={styles.cardTitle} title={titleClean}>
+                  {titleClean}
+                </div>
                 <div style={styles.cardMeta}>
                   <span>Multi-Audio</span>
                   <span style={{ color: '#f47521', fontWeight: 600 }}>Stream</span>
@@ -205,17 +263,14 @@ export default function Home() {
         })}
       </div>
 
-      {/* In-Browser Multi-Audio Engine Modal */}
+      {/* Clean Fullscreen Video Player Modal */}
       {activeVideo && (
-        <div style={styles.modalBackdrop}>
-          <div style={styles.modalWrapper}>
-            <button style={styles.closeBtn} onClick={() => setActiveVideo(null)}>
+        <div style={styles.playerBackdrop}>
+          <div style={styles.playerContainerWrapper}>
+            <button style={styles.closePlayerBtn} onClick={() => setActiveVideo(null)}>
               ✕
             </button>
             <div style={styles.playerContainer} ref={artContainerRef} />
-            <div style={styles.nowPlayingText}>
-              Playing: <span>{activeVideo.title}</span>
-            </div>
           </div>
         </div>
       )}
@@ -223,21 +278,206 @@ export default function Home() {
   );
 }
 
+// Clean Dark OLED Styles
 const styles: { [key: string]: React.CSSProperties } = {
-  main: { backgroundColor: '#000000', color: '#ffffff', minHeight: '100vh', paddingBottom: '60px', fontFamily: 'system-ui, sans-serif' },
-  header: { position: 'sticky', top: 0, zIndex: 100, backgroundColor: '#000000', display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '16px 20px', borderBottom: '1px solid #1c1c1c' },
-  logo: { fontSize: '1.25rem', fontWeight: 800, color: '#f47521', letterSpacing: '1.5px' },
-  searchBox: { backgroundColor: '#141414', border: '1px solid #282828', borderRadius: '20px', padding: '6px 14px' },
-  searchInput: { background: 'transparent', border: 'none', color: '#fff', outline: 'none', fontSize: '0.85rem' },
-  grid: { display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(160px, 1fr))', gap: '16px', padding: '20px' },
-  card: { backgroundColor: '#111111', borderRadius: '6px', overflow: 'hidden', border: '1px solid #1c1c1c', cursor: 'pointer' },
-  cardImg: { width: '100%', height: '220px', objectFit: 'cover', display: 'block' },
-  cardInfo: { padding: '10px' },
-  cardTitle: { fontSize: '0.88rem', fontWeight: 600, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', marginBottom: '6px' },
-  cardMeta: { fontSize: '0.75rem', color: '#777777', display: 'flex', justifyContent: 'space-between' },
-  modalBackdrop: { position: 'fixed', inset: 0, backgroundColor: 'rgba(0, 0, 0, 0.95)', zIndex: 1000, display: 'flex', justifyContent: 'center', alignItems: 'center', padding: '16px' },
-  modalWrapper: { position: 'relative', width: '100%', maxWidth: '920px' },
-  playerContainer: { width: '100%', aspectRatio: '16 / 9', backgroundColor: '#000000', borderRadius: '8px', overflow: 'hidden', border: '1px solid #222222' },
-  closeBtn: { position: 'absolute', top: '-40px', right: 0, background: 'none', border: 'none', color: '#ffffff', fontSize: '1.8rem', cursor: 'pointer' },
-  nowPlayingText: { marginTop: '12px', fontSize: '0.95rem', fontWeight: 600, color: '#f47521' },
+  main: {
+    backgroundColor: '#000000',
+    color: '#ffffff',
+    minHeight: '100vh',
+    paddingBottom: '60px',
+    fontFamily: 'system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif',
+  },
+  header: {
+    position: 'sticky',
+    top: 0,
+    zIndex: 100,
+    backgroundColor: '#000000',
+    display: 'flex',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    padding: '16px 20px',
+    borderBottom: '1px solid #1c1c1c',
+  },
+  logo: {
+    fontSize: '1.25rem',
+    fontWeight: 800,
+    letterSpacing: '1.5px',
+    cursor: 'pointer',
+    display: 'flex',
+    alignItems: 'center',
+    gap: '8px',
+  },
+  searchBox: {
+    backgroundColor: '#141414',
+    border: '1px solid #282828',
+    borderRadius: '20px',
+    padding: '6px 14px',
+    display: 'flex',
+    alignItems: 'center',
+  },
+  searchInput: {
+    background: 'transparent',
+    border: 'none',
+    color: '#fff',
+    outline: 'none',
+    fontSize: '0.85rem',
+    width: '130px',
+  },
+  hero: {
+    position: 'relative',
+    height: '300px',
+    background:
+      "linear-gradient(to top, #000000 10%, rgba(0,0,0,0.5) 70%, transparent 100%), url('https://images.unsplash.com/photo-1578632767115-351597cf2477?w=1200') center/cover",
+    display: 'flex',
+    alignItems: 'flex-end',
+    padding: '24px 20px',
+  },
+  heroContent: {
+    maxWidth: '520px',
+  },
+  heroTitle: {
+    fontSize: '1.8rem',
+    fontWeight: 800,
+    marginBottom: '6px',
+  },
+  heroDesc: {
+    color: '#a0a0a0',
+    fontSize: '0.9rem',
+    marginBottom: '14px',
+    lineHeight: 1.4,
+  },
+  playBtn: {
+    backgroundColor: '#f47521',
+    color: '#000',
+    border: 'none',
+    padding: '10px 22px',
+    borderRadius: '4px',
+    fontSize: '0.9rem',
+    fontWeight: 700,
+    cursor: 'pointer',
+  },
+  sectionHeader: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: '10px',
+    padding: '24px 20px 14px',
+  },
+  sectionBar: {
+    width: '4px',
+    height: '20px',
+    backgroundColor: '#f47521',
+    borderRadius: '2px',
+  },
+  sectionTitle: {
+    fontSize: '1.2rem',
+    fontWeight: 700,
+    margin: 0,
+  },
+  statusText: {
+    padding: '20px',
+    color: '#888888',
+    fontSize: '0.95rem',
+  },
+  grid: {
+    display: 'grid',
+    gridTemplateColumns: 'repeat(auto-fill, minmax(160px, 1fr))',
+    gap: '16px',
+    padding: '0 20px',
+  },
+  card: {
+    backgroundColor: '#111111',
+    borderRadius: '6px',
+    overflow: 'hidden',
+    border: '1px solid #1c1c1c',
+    cursor: 'pointer',
+  },
+  cardImgWrapper: {
+    position: 'relative',
+    width: '100%',
+    height: '220px',
+    backgroundColor: '#181818',
+  },
+  cardImg: {
+    width: '100%',
+    height: '100%',
+    objectFit: 'cover',
+    display: 'block',
+  },
+  cardHoverOverlay: {
+    position: 'absolute',
+    inset: 0,
+    backgroundColor: 'rgba(0, 0, 0, 0.3)',
+    display: 'flex',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  playCircle: {
+    width: '40px',
+    height: '40px',
+    borderRadius: '50%',
+    backgroundColor: 'rgba(244, 117, 33, 0.9)',
+    color: '#000',
+    display: 'flex',
+    justifyContent: 'center',
+    alignItems: 'center',
+    fontSize: '1rem',
+    fontWeight: 'bold',
+    paddingLeft: '3px',
+  },
+  cardInfo: {
+    padding: '10px',
+  },
+  cardTitle: {
+    fontSize: '0.88rem',
+    fontWeight: 600,
+    whiteSpace: 'nowrap',
+    overflow: 'hidden',
+    textOverflow: 'ellipsis',
+    marginBottom: '6px',
+  },
+  cardMeta: {
+    fontSize: '0.75rem',
+    color: '#777777',
+    display: 'flex',
+    justifyContent: 'space-between',
+  },
+  playerBackdrop: {
+    position: 'fixed',
+    inset: 0,
+    backgroundColor: '#000000',
+    zIndex: 1000,
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  playerContainerWrapper: {
+    position: 'relative',
+    width: '100%',
+    height: '100%',
+    backgroundColor: '#000000',
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  playerContainer: {
+    width: '100%',
+    height: '100%',
+  },
+  closePlayerBtn: {
+    position: 'absolute',
+    top: '16px',
+    left: '16px',
+    zIndex: 1100,
+    background: 'rgba(0, 0, 0, 0.6)',
+    border: '1px solid rgba(255, 255, 255, 0.2)',
+    borderRadius: '50%',
+    width: '40px',
+    height: '40px',
+    color: '#ffffff',
+    fontSize: '1.2rem',
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    cursor: 'pointer',
+  },
 };
