@@ -76,7 +76,7 @@ export default function Home() {
 
   return (
     <div className="min-h-screen bg-[#0b0f19] text-[#f8fafc] flex flex-col">
-      {/* Header */}
+      {/* Top Navbar */}
       <header className="bg-[#151e32] border-b border-[#23304a] px-5 py-4 flex justify-between items-center sticky top-0 z-50">
         <div className="text-lg font-bold text-indigo-400 flex items-center gap-2">
           <span>🎬</span> AnimeStream
@@ -86,16 +86,17 @@ export default function Home() {
         </div>
       </header>
 
-      {/* Main Container */}
+      {/* Main Content */}
       <main className="max-w-6xl w-full mx-auto p-3 sm:p-5 flex flex-col lg:grid lg:grid-cols-3 gap-5 flex-1">
         {/* Player Section */}
         <div className="lg:col-span-2 flex flex-col gap-3">
-          <div className="w-full aspect-video bg-black rounded-xl overflow-hidden border border-[#23304a] shadow-lg">
+          {/* Constrained Responsive Player Box */}
+          <div className="w-full aspect-video bg-black rounded-xl overflow-hidden border border-[#23304a] shadow-lg relative">
             {activeEpisode ? (
               <iframe
                 key={activeEpisode.id}
                 src={`https://drive.google.com/file/d/${activeEpisode.id}/preview`}
-                className="w-full h-full border-0 block"
+                className="w-full h-full border-0 absolute inset-0"
                 allow="autoplay; fullscreen"
                 allowFullScreen
               />
@@ -106,23 +107,38 @@ export default function Home() {
             )}
           </div>
 
-          <div className="bg-[#151e32] p-4 rounded-xl border border-[#23304a]">
-            <h2 className="text-base font-semibold text-white leading-snug">
-              {activeEpisode ? activeEpisode.displayName : "No Episode Selected"}
-            </h2>
-            <p className="text-xs text-slate-400 mt-1">
-              {activeEpisode
-                ? `Episode ${activeIndex + 1} of ${episodes.length}`
-                : "Select an episode from the list below."}
-            </p>
+          {/* Episode Info & Direct Watch Option */}
+          <div className="bg-[#151e32] p-4 rounded-xl border border-[#23304a] flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+            <div>
+              <h2 className="text-sm md:text-base font-semibold text-white leading-snug">
+                {activeEpisode ? activeEpisode.displayName : "No Episode Selected"}
+              </h2>
+              <p className="text-xs text-slate-400 mt-1">
+                {activeEpisode
+                  ? `Episode ${activeIndex + 1} of ${episodes.length}`
+                  : "Select an episode from the list below."}
+              </p>
+            </div>
+
+            {activeEpisode && (
+              <a
+                href={`https://drive.google.com/file/d/${activeEpisode.id}/view`}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="px-4 py-2 bg-indigo-600 hover:bg-indigo-500 active:scale-95 text-white text-xs font-semibold rounded-lg flex items-center justify-center gap-1.5 transition-all self-start sm:self-auto"
+              >
+                <span>Full Player Mode</span>
+                <span className="text-[10px]">↗</span>
+              </a>
+            )}
           </div>
         </div>
 
-        {/* Episodes List */}
+        {/* Episodes Sidebar */}
         <div className="bg-[#151e32] rounded-xl border border-[#23304a] flex flex-col max-h-[480px] lg:max-h-[580px] overflow-hidden">
           <div className="p-3.5 border-b border-[#23304a] font-semibold text-sm flex justify-between items-center">
             <span>Episodes</span>
-            <span className="text-xs text-slate-400 font-normal">Auto-sorted</span>
+            <span className="text-xs text-slate-400 font-normal">Select below</span>
           </div>
           <div className="overflow-y-auto p-2 flex flex-col gap-1.5 flex-1">
             {error && (
