@@ -12,6 +12,7 @@ interface DriveFile {
 export default function Home() {
   const GOOGLE_API_KEY = "AIzaSyCwhYhosnTrfHyi6N1C0N8AJl4gT85xg9w";
   const FOLDER_ID = "1qJu2_VmnxluIFlgARfX-G606W-tCDAlG";
+  const PROXY_BASE = "https://animetoon-proxy.thinkingnew.workers.dev";
 
   const [episodes, setEpisodes] = useState<DriveFile[]>([]);
   const [filteredEpisodes, setFilteredEpisodes] = useState<DriveFile[]>([]);
@@ -63,6 +64,8 @@ export default function Home() {
       );
     }
   };
+
+  const streamUrl = activeVideo ? `${PROXY_BASE}/?id=${activeVideo.id}` : '';
 
   return (
     <main style={styles.main}>
@@ -150,7 +153,7 @@ export default function Home() {
                   {titleClean}
                 </div>
                 <div style={styles.cardMeta}>
-                  <span>Full HD</span>
+                  <span>Multi-Audio</span>
                   <span style={{ color: '#f47521', fontWeight: 600 }}>Stream</span>
                 </div>
               </div>
@@ -159,13 +162,17 @@ export default function Home() {
         })}
       </div>
 
-      {/* Smooth Player Modal */}
+      {/* Responsive Fullscreen Video Player Modal */}
       {activeVideo && (
         <div style={styles.modalBackdrop}>
           <div style={styles.modalWrapper}>
-            <button style={styles.closeBtn} onClick={() => setActiveVideo(null)}>
-              ✕
-            </button>
+            <div style={styles.modalTopBar}>
+              <span style={styles.modalTitleText}>{activeVideo.title}</span>
+              <button style={styles.closeBtn} onClick={() => setActiveVideo(null)}>
+                ✕
+              </button>
+            </div>
+
             <div style={styles.playerContainer}>
               <iframe
                 src={`https://drive.google.com/file/d/${activeVideo.id}/preview`}
@@ -174,8 +181,24 @@ export default function Home() {
                 style={styles.iframe}
               />
             </div>
-            <div style={styles.nowPlayingText}>
-              Playing: <span style={{ color: '#fff' }}>{activeVideo.title}</span>
+
+            {/* External App Launch Bar for Full Hardware Multi-Audio Switching */}
+            <div style={styles.audioActionContainer}>
+              <span style={styles.audioHint}>Switch Audio Tracks (Telugu / Hindi / Jap / Eng):</span>
+              <div style={styles.audioButtonsRow}>
+                <button
+                  style={styles.vidhubButton}
+                  onClick={() => window.location.href = `vidhub://play?url=${encodeURIComponent(streamUrl)}`}
+                >
+                  🚀 VidHub App
+                </button>
+                <button
+                  style={styles.vlcButton}
+                  onClick={() => window.location.href = `vlc://${streamUrl}`}
+                >
+                  ⚡ VLC Player
+                </button>
+              </div>
             </div>
           </div>
         </div>
@@ -359,20 +382,47 @@ const styles: { [key: string]: React.CSSProperties } = {
     display: 'flex',
     justifyContent: 'center',
     alignItems: 'center',
-    padding: '16px',
+    padding: '12px',
   },
   modalWrapper: {
     position: 'relative',
     width: '100%',
-    maxWidth: '920px',
+    maxWidth: '850px',
+    backgroundColor: '#121214',
+    borderRadius: '10px',
+    overflow: 'hidden',
+    border: '1px solid #282828',
+    display: 'flex',
+    flexDirection: 'column',
+  },
+  modalTopBar: {
+    display: 'flex',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    padding: '12px 16px',
+    borderBottom: '1px solid #202020',
+  },
+  modalTitleText: {
+    fontSize: '0.9rem',
+    fontWeight: 700,
+    color: '#ffffff',
+    whiteSpace: 'nowrap',
+    overflow: 'hidden',
+    textOverflow: 'ellipsis',
+    maxWidth: '85%',
+  },
+  closeBtn: {
+    background: 'none',
+    border: 'none',
+    color: '#888888',
+    fontSize: '1.4rem',
+    cursor: 'pointer',
+    lineHeight: 1,
   },
   playerContainer: {
     width: '100%',
     aspectRatio: '16 / 9',
     backgroundColor: '#000000',
-    borderRadius: '8px',
-    overflow: 'hidden',
-    border: '1px solid #222222',
   },
   iframe: {
     width: '100%',
@@ -380,21 +430,42 @@ const styles: { [key: string]: React.CSSProperties } = {
     border: 'none',
     display: 'block',
   },
-  closeBtn: {
-    position: 'absolute',
-    top: '-40px',
-    right: '0',
-    background: 'none',
-    border: 'none',
-    color: '#ffffff',
-    fontSize: '1.8rem',
-    cursor: 'pointer',
-    lineHeight: 1,
+  audioActionContainer: {
+    padding: '14px 16px',
+    display: 'flex',
+    flexDirection: 'column',
+    gap: '8px',
+    backgroundColor: '#0c0c0d',
+    borderTop: '1px solid #202020',
   },
-  nowPlayingText: {
-    marginTop: '12px',
-    fontSize: '0.95rem',
+  audioHint: {
+    fontSize: '0.78rem',
+    color: '#aaaaaa',
+  },
+  audioButtonsRow: {
+    display: 'flex',
+    gap: '10px',
+  },
+  vidhubButton: {
+    flex: 1,
+    backgroundColor: '#f47521',
+    color: '#000000',
+    border: 'none',
+    borderRadius: '4px',
+    padding: '10px',
+    fontSize: '0.82rem',
+    fontWeight: 700,
+    cursor: 'pointer',
+  },
+  vlcButton: {
+    flex: 1,
+    backgroundColor: '#202024',
+    color: '#ffffff',
+    border: '1px solid #333338',
+    borderRadius: '4px',
+    padding: '10px',
+    fontSize: '0.82rem',
     fontWeight: 600,
-    color: '#f47521',
+    cursor: 'pointer',
   },
 };
