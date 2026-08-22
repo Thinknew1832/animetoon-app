@@ -47,7 +47,7 @@ export default function Home() {
 
   // Active Video Modal
   const [activeEpisode, setActiveEpisode] = useState<{ title: string; id: string } | null>(null);
-  const [useIframeFallback, setUseIframeFallback] = useState(false);
+  const [showAudioSheet, setShowAudioSheet] = useState(false);
 
   const seasonsCache = useRef<{ [key: string]: SeasonItem[] }>({});
 
@@ -119,7 +119,7 @@ export default function Home() {
         setZones(validZones);
         setAllAnimes(validZones.flatMap((z) => z.animes));
       } catch (err: any) {
-        setError('Failed to connect to Google Drive catalog.');
+        setError('Failed to load Google Drive catalog.');
       } finally {
         setInitialLoading(false);
       }
@@ -179,11 +179,7 @@ export default function Home() {
     }
   };
 
-  const startPlayingEpisode = (ep: { title: string; id: string }) => {
-    setActiveEpisode(ep);
-    setUseIframeFallback(false);
-  };
-
+  const streamUrl = activeEpisode ? `${PROXY_BASE}/?id=${activeEpisode.id}` : '';
   const currentHero = allAnimes[0];
 
   return (
@@ -191,11 +187,11 @@ export default function Home() {
       {initialLoading && (
         <div style={styles.centerLoaderBox}>
           <div style={styles.loadingSpinner} />
-          <p style={styles.loadingText}>Loading Anime Vault...</p>
+          <p style={styles.loadingText}>Loading Anime Library...</p>
         </div>
       )}
 
-      {/* Main Grid Screen */}
+      {/* Catalog Home */}
       {!initialLoading && !selectedAnime && (
         <div style={{ paddingBottom: '40px' }}>
           {currentHero && (
@@ -234,7 +230,7 @@ export default function Home() {
         </div>
       )}
 
-      {/* Detail Screen */}
+      {/* Episode Detail View */}
       {selectedAnime && (
         <div style={styles.detailPage}>
           <div
@@ -254,10 +250,12 @@ export default function Home() {
                 <div
                   key={ep.id}
                   style={styles.epCard}
-                  onClick={() => startPlayingEpisode({ title: ep.name.replace(/\.[^/.]+$/, ''), id: ep.id })}
+                  onClick={() => setActiveEpisode({ title: ep.name.replace(/\.[^/.]+$/, ''), id: ep.id })}
                 >
                   <img src={getSafeImage(ep.id, ep.thumbnailLink)} alt={ep.name} style={styles.epThumb} />
-                  <div style={styles.epTitle}>{idx + 1}. {ep.name.replace(/\.[^/.]+$/, '')}</div>
+                  <div style={styles.epInfo}>
+                    <div style={styles.epTitle}>{idx + 1}. {ep.name.replace(/\.[^/.]+$/, '')}</div>
+                  </div>
                 </div>
               ))}
             </div>
@@ -265,35 +263,45 @@ export default function Home() {
         </div>
       )}
 
-      {/* Reliable Video Player Modal */}
+      {/* Fullscreen Video Player Modal */}
       {activeEpisode && (
         <div style={styles.playerBackdrop}>
           <div style={styles.playerWrapper}>
-            <button style={styles.closePlayerBtn} onClick={() => setActiveEpisode(null)}>
-              ✕
-            </button>
+            <div style={styles.playerHeader}>
+              <div style={styles.playerTitle}>{activeEpisode.title}</div>
+              <button style={styles.closePlayerBtn} onClick={() => setActiveEpisode(null)}>✕</button>
+            </div>
 
-            {!useIframeFallback ? (
+            <div style={styles.videoContainer}>
               <video
                 key={activeEpisode.id}
-                src={`${PROXY_BASE}/?id=${activeEpisode.id}`}
+                src={streamUrl}
                 controls
                 autoPlay
                 playsInline
-                onError={() => setUseIframeFallback(true)}
-                style={styles.videoPlayer}
+                style={styles.videoElement}
               />
-            ) : (
-              <iframe
-                src={`https://drive.google.com/file/d/${activeEpisode.id}/preview`}
-                allow="autoplay; fullscreen"
-                allowFullScreen
-                style={styles.videoIframe}
-              />
-            )}
+            </div>
 
-            <div style={styles.nowPlayingBar}>
-              <span>Playing: <b>{activeEpisode.title}</b></span>
+            {/* Audio Options Bar */}
+            <div style={styles.audioActionContainer}>
+              <div style={styles.audioHint}>
+                <span>Multi-Audio Stream (Telugu / Hindi / Jap / Eng):</span>
+              </div>
+              <div style={styles.audioButtonsRow}>
+                <button
+                  style={styles.vidhubButton}
+                  onClick={() => window.location.href = `vidhub://play?url=${encodeURIComponent(streamUrl)}`}
+                >
+                  🚀 Switch Audio in VidHub[span_14](start_span)[span_14](end_span)
+                </button>
+                <button
+                  style={styles.vlcButton}
+                  onClick={() => window.location.href = `vlc://${streamUrl}`}
+                >
+                  ⚡ Open in VLC[span_15](start_span)[span_15](end_span)
+                </button>
+              </div>
             </div>
           </div>
         </div>
@@ -324,11 +332,18 @@ const styles: { [key: string]: React.CSSProperties } = {
   episodeList: { display: 'flex', flexDirection: 'column', gap: '12px', marginTop: '16px' },
   epCard: { display: 'flex', alignItems: 'center', gap: '12px', cursor: 'pointer', backgroundColor: '#0e0e0e', padding: '8px', borderRadius: '6px' },
   epThumb: { width: '110px', height: '65px', borderRadius: '4px', objectFit: 'cover', backgroundColor: '#181818', flexShrink: 0 },
+  epInfo: { flex: 1 },
   epTitle: { fontSize: '0.85rem', fontWeight: 600, color: '#fff' },
   playerBackdrop: { position: 'fixed', inset: 0, backgroundColor: 'rgba(0,0,0,0.95)', zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '12px' },
-  playerWrapper: { position: 'relative', width: '100%', maxWidth: '900px', backgroundColor: '#000', borderRadius: '8px', overflow: 'hidden' },
-  closePlayerBtn: { position: 'absolute', top: '10px', right: '10px', zIndex: 10, background: 'rgba(0,0,0,0.7)', border: 'none', color: '#fff', width: '36px', height: '36px', borderRadius: '50%', fontSize: '1.2rem', cursor: 'pointer' },
-  videoPlayer: { width: '100%', aspectRatio: '16 / 9', backgroundColor: '#000', display: 'block' },
-  videoIframe: { width: '100%', aspectRatio: '16 / 9', border: 'none', display: 'block' },
-  nowPlayingBar: { padding: '12px 14px', backgroundColor: '#111', fontSize: '0.85rem', color: '#aaa' },
+  playerWrapper: { width: '100%', maxWidth: '900px', backgroundColor: '#111111', borderRadius: '8px', overflow: 'hidden', border: '1px solid #222222', display: 'flex', flexDirection: 'column' },
+  playerHeader: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '12px 16px', borderBottom: '1px solid #222222' },
+  playerTitle: { fontSize: '0.9rem', fontWeight: 700, color: '#ffffff', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: '85%' },
+  closePlayerBtn: { background: 'none', border: 'none', color: '#ffffff', fontSize: '1.4rem', cursor: 'pointer' },
+  videoContainer: { width: '100%', aspectRatio: '16 / 9', backgroundColor: '#000000' },
+  videoElement: { width: '100%', height: '100%', objectFit: 'contain', display: 'block' },
+  audioActionContainer: { padding: '12px 16px', display: 'flex', flexDirection: 'column', gap: '8px', backgroundColor: '#0c0c0c' },
+  audioHint: { fontSize: '0.8rem', color: '#888888' },
+  audioButtonsRow: { display: 'flex', gap: '8px' },
+  vidhubButton: { flex: 1, backgroundColor: '#f47521', color: '#000000', border: 'none', borderRadius: '4px', padding: '10px', fontSize: '0.85rem', fontWeight: 700, cursor: 'pointer' },
+  vlcButton: { flex: 1, backgroundColor: '#222222', color: '#ffffff', border: '1px solid #333333', borderRadius: '4px', padding: '10px', fontSize: '0.85rem', fontWeight: 600, cursor: 'pointer' },
 };
