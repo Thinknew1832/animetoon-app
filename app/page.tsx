@@ -12,6 +12,7 @@ interface DriveFile {
 export default function Home() {
   const GOOGLE_API_KEY = "AIzaSyCwhYhosnTrfHyi6N1C0N8AJl4gT85xg9w";
   const FOLDER_ID = "1qJu2_VmnxluIFlgARfX-G606W-tCDAlG";
+  const PROXY_BASE = "https://animetoon-proxy.thinkingnew.workers.dev";
 
   const [episodes, setEpisodes] = useState<DriveFile[]>([]);
   const [filteredEpisodes, setFilteredEpisodes] = useState<DriveFile[]>([]);
@@ -66,7 +67,7 @@ export default function Home() {
 
   return (
     <main style={styles.main}>
-      {/* Top Navigation */}
+      {/* Top Header */}
       <header style={styles.header}>
         <div style={styles.logo} onClick={() => window.scrollTo({ top: 0, behavior: 'smooth' })}>
           <span style={styles.playIcon}>▶</span> ANIMETOON
@@ -74,7 +75,7 @@ export default function Home() {
         <div style={styles.searchBox}>
           <input
             type="text"
-            placeholder="Search anime..."
+            placeholder="Search episodes..."
             value={searchQuery}
             onChange={(e) => handleSearch(e.target.value)}
             style={styles.searchInput}
@@ -82,12 +83,12 @@ export default function Home() {
         </div>
       </header>
 
-      {/* Hero Banner */}
+      {/* Hero Spotlight */}
       <section style={styles.hero}>
         <div style={styles.heroContent}>
           <h1 style={styles.heroTitle}>AnimeToon Stream</h1>
           <p style={styles.heroDesc}>
-            Cloud streaming archive with instant episode playback.
+            Instant high-definition streaming directly from your cloud archive.
           </p>
           {episodes.length > 0 && (
             <button
@@ -105,7 +106,7 @@ export default function Home() {
         </div>
       </section>
 
-      {/* Episodes Header */}
+      {/* Episode Header */}
       <div style={styles.sectionHeader}>
         <span style={styles.sectionBar}></span>
         <h2 style={styles.sectionTitle}>Episodes</h2>
@@ -117,7 +118,7 @@ export default function Home() {
         <p style={styles.statusText}>No video files found in this folder.</p>
       )}
 
-      {/* Episode Grid */}
+      {/* Video Grid */}
       <div style={styles.grid}>
         {filteredEpisodes.map((file) => {
           const titleClean = file.name.replace(/\.[^/.]+$/, '');
@@ -159,23 +160,29 @@ export default function Home() {
         })}
       </div>
 
-      {/* Fullscreen Transcoded Player Modal */}
+      {/* Native Stream Player Modal */}
       {activeVideo && (
-        <div style={styles.fullscreenModal}>
-          <div style={styles.topControlBar}>
-            <span style={styles.videoTitle}>{activeVideo.title}</span>
+        <div style={styles.modalBackdrop}>
+          <div style={styles.modalWrapper}>
             <button style={styles.closeBtn} onClick={() => setActiveVideo(null)}>
               ✕
             </button>
-          </div>
-
-          <div style={styles.playerFrameContainer}>
-            <iframe
-              src={`https://drive.google.com/file/d/${activeVideo.id}/preview`}
-              allow="autoplay; fullscreen"
-              allowFullScreen
-              style={styles.responsiveIframe}
-            />
+            <div style={styles.playerContainer}>
+              <video
+                key={activeVideo.id}
+                src={`${PROXY_BASE}/?id=${activeVideo.id}`}
+                controls
+                autoPlay
+                playsInline
+                preload="auto"
+                style={styles.videoElement}
+              >
+                Your browser does not support playing this video format.
+              </video>
+            </div>
+            <div style={styles.nowPlayingText}>
+              Playing: <span style={{ color: '#fff' }}>{activeVideo.title}</span>
+            </div>
           </div>
         </div>
       )}
@@ -183,6 +190,7 @@ export default function Home() {
   );
 }
 
+// Crunchyroll-Style Dark & Orange Theme
 const styles: { [key: string]: React.CSSProperties } = {
   main: {
     backgroundColor: '#000000',
@@ -212,7 +220,9 @@ const styles: { [key: string]: React.CSSProperties } = {
     alignItems: 'center',
     gap: '8px',
   },
-  playIcon: { fontSize: '1.1rem' },
+  playIcon: {
+    fontSize: '1.1rem',
+  },
   searchBox: {
     backgroundColor: '#141414',
     border: '1px solid #282828',
@@ -231,15 +241,21 @@ const styles: { [key: string]: React.CSSProperties } = {
   },
   hero: {
     position: 'relative',
-    height: '300px',
+    height: '320px',
     background:
       "linear-gradient(to top, #000000 10%, rgba(0,0,0,0.5) 70%, transparent 100%), url('https://images.unsplash.com/photo-1578632767115-351597cf2477?w=1200') center/cover",
     display: 'flex',
     alignItems: 'flex-end',
     padding: '24px 20px',
   },
-  heroContent: { maxWidth: '520px' },
-  heroTitle: { fontSize: '1.8rem', fontWeight: 800, marginBottom: '6px' },
+  heroContent: {
+    maxWidth: '520px',
+  },
+  heroTitle: {
+    fontSize: '1.8rem',
+    fontWeight: 800,
+    marginBottom: '6px',
+  },
   heroDesc: {
     color: '#a0a0a0',
     fontSize: '0.9rem',
@@ -268,8 +284,16 @@ const styles: { [key: string]: React.CSSProperties } = {
     backgroundColor: '#f47521',
     borderRadius: '2px',
   },
-  sectionTitle: { fontSize: '1.2rem', fontWeight: 700, margin: 0 },
-  statusText: { padding: '20px', color: '#888888', fontSize: '0.95rem' },
+  sectionTitle: {
+    fontSize: '1.2rem',
+    fontWeight: 700,
+    margin: 0,
+  },
+  statusText: {
+    padding: '20px',
+    color: '#888888',
+    fontSize: '0.95rem',
+  },
   grid: {
     display: 'grid',
     gridTemplateColumns: 'repeat(auto-fill, minmax(160px, 1fr))',
@@ -282,6 +306,7 @@ const styles: { [key: string]: React.CSSProperties } = {
     overflow: 'hidden',
     border: '1px solid #1c1c1c',
     cursor: 'pointer',
+    transition: 'transform 0.15s ease',
   },
   cardImgWrapper: {
     position: 'relative',
@@ -316,7 +341,9 @@ const styles: { [key: string]: React.CSSProperties } = {
     fontWeight: 'bold',
     paddingLeft: '3px',
   },
-  cardInfo: { padding: '10px' },
+  cardInfo: {
+    padding: '10px',
+  },
   cardTitle: {
     fontSize: '0.88rem',
     fontWeight: 600,
@@ -331,51 +358,54 @@ const styles: { [key: string]: React.CSSProperties } = {
     display: 'flex',
     justifyContent: 'space-between',
   },
-  fullscreenModal: {
+  modalBackdrop: {
     position: 'fixed',
     inset: 0,
-    backgroundColor: '#000000',
-    zIndex: 9999,
+    backgroundColor: 'rgba(0, 0, 0, 0.95)',
+    zIndex: 1000,
     display: 'flex',
-    flexDirection: 'column',
-    justifyContent: 'flex-start',
-  },
-  topControlBar: {
-    display: 'flex',
-    justifyContent: 'space-between',
+    justifyContent: 'center',
     alignItems: 'center',
-    padding: '12px 16px',
-    backgroundColor: '#0a0a0a',
-    borderBottom: '1px solid #1c1c1c',
-    zIndex: 10,
+    padding: '16px',
   },
-  videoTitle: {
-    fontSize: '0.9rem',
-    fontWeight: 700,
-    color: '#ffffff',
-    maxWidth: '85%',
-    whiteSpace: 'nowrap',
+  modalWrapper: {
+    position: 'relative',
+    width: '100%',
+    maxWidth: '920px',
+  },
+  playerContainer: {
+    width: '100%',
+    aspectRatio: '16 / 9',
+    backgroundColor: '#000000',
+    borderRadius: '8px',
     overflow: 'hidden',
-    textOverflow: 'ellipsis',
+    border: '1px solid #222222',
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  videoElement: {
+    width: '100%',
+    height: '100%',
+    objectFit: 'contain',
+    display: 'block',
+    outline: 'none',
   },
   closeBtn: {
+    position: 'absolute',
+    top: '-40px',
+    right: '0',
     background: 'none',
     border: 'none',
     color: '#ffffff',
-    fontSize: '1.4rem',
+    fontSize: '1.8rem',
     cursor: 'pointer',
+    lineHeight: 1,
   },
-  playerFrameContainer: {
-    flex: 1,
-    width: '100%',
-    height: '100%',
-    backgroundColor: '#000000',
-    display: 'flex',
-  },
-  responsiveIframe: {
-    width: '100%',
-    height: '100%',
-    border: 'none',
-    flex: 1,
+  nowPlayingText: {
+    marginTop: '12px',
+    fontSize: '0.95rem',
+    fontWeight: 600,
+    color: '#f47521',
   },
 };
