@@ -159,7 +159,7 @@ export default function Home() {
         })}
       </div>
 
-      {/* Google Cloud Stream Player Modal */}
+      {/* Smooth Player Modal */}
       {activeVideo && (
         <div style={styles.modalBackdrop}>
           <div style={styles.modalWrapper}>
