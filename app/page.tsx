@@ -12,6 +12,7 @@ interface DriveFile {
 export default function Home() {
   const GOOGLE_API_KEY = "AIzaSyCwhYhosnTrfHyi6N1C0N8AJl4gT85xg9w";
   const FOLDER_ID = "1qJu2_VmnxluIFlgARfX-G606W-tCDAlG";
+  const PROXY_BASE = "https://animetoon-proxy.thinkingnew.workers.dev";
 
   const [episodes, setEpisodes] = useState<DriveFile[]>([]);
   const [filteredEpisodes, setFilteredEpisodes] = useState<DriveFile[]>([]);
@@ -87,7 +88,7 @@ export default function Home() {
         <div style={styles.heroContent}>
           <h1 style={styles.heroTitle}>AnimeToon Stream</h1>
           <p style={styles.heroDesc}>
-            Stream high-definition anime directly from your cloud archive.
+            Direct cloud streaming powered by Cloudflare Worker proxy.
           </p>
           {episodes.length > 0 && (
             <button
@@ -150,7 +151,7 @@ export default function Home() {
                   {titleClean}
                 </div>
                 <div style={styles.cardMeta}>
-                  <span>Full HD</span>
+                  <span>Cloudflare</span>
                   <span style={{ color: '#f47521', fontWeight: 600 }}>Stream</span>
                 </div>
               </div>
@@ -159,7 +160,7 @@ export default function Home() {
         })}
       </div>
 
-      {/* Fullscreen Video Modal */}
+      {/* Pure Direct Video Player Modal via Cloudflare Proxy */}
       {activeVideo && (
         <div style={styles.fullscreenModal}>
           <div style={styles.topControlBar}>
@@ -170,12 +171,17 @@ export default function Home() {
           </div>
 
           <div style={styles.playerFrameContainer}>
-            <iframe
-              src={`https://drive.google.com/file/d/${activeVideo.id}/preview`}
-              allow="autoplay; fullscreen"
-              allowFullScreen
-              style={styles.responsiveIframe}
-            />
+            <video
+              key={activeVideo.id}
+              src={`${PROXY_BASE}/?id=${activeVideo.id}`}
+              controls
+              autoPlay
+              playsInline
+              preload="auto"
+              style={styles.videoPlayer}
+            >
+              Your browser does not support HTML5 video streaming.
+            </video>
           </div>
         </div>
       )}
@@ -371,11 +377,14 @@ const styles: { [key: string]: React.CSSProperties } = {
     height: '100%',
     backgroundColor: '#000000',
     display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
   },
-  responsiveIframe: {
+  videoPlayer: {
     width: '100%',
     height: '100%',
-    border: 'none',
-    flex: 1,
+    maxHeight: '85vh',
+    objectFit: 'contain',
+    outline: 'none',
   },
 };
